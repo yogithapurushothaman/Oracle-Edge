@@ -1,0 +1,414 @@
+PRODUCT REQUIREMENTS DOCUMENT
+ORACLE Edge
+Space-to-Ground Infrastructure Decision Intelligence Platform
+A decision-support and action-prioritization system that fuses satellite observations, weather data, GIS infrastructure information, and real-time edge sensing to rank vulnerable infrastructure by urgency and recommend the appropriate operational response.
+Field
+Detail
+Document Type
+Product Requirements Document (PRD)
+Product Name
+ORACLE Edge
+Version
+v1.0 (Draft)
+Date
+September 9, 2026
+Project Duration
+12 Weeks (Academic Prototype)
+Status
+Approved for MVP Development
+1. Executive Summary
+Urban authorities rely on many disconnected sources of information — weather forecasts, satellite imagery, GIS maps, sensors, and field inspections — to manage flood-prone infrastructure. These sources describe conditions, but none of them tell a resource-constrained authority where to send its limited inspection and maintenance teams first.
+ORACLE Edge is a cloud-based infrastructure decision-intelligence platform with an IoT edge device. It fuses satellite imagery, weather data, GIS infrastructure information, and real-time sensor measurements to calculate infrastructure risk, prioritize assets by hazard and human impact, and recommend the most appropriate intervention. The platform is demonstrated end-to-end through a physical flood-infrastructure prototype connected to a cloud AI backend.
+Core distinction
+ORACLE Edge is not another flood-prediction system. It is a decision-support and action-prioritization system: prediction is an input, not the product.
+2. Problem Statement
+During a major rainfall event, a municipality may be responsible for 100 roads, 30 bridges, 200 drains, and 20 flood-prone zones — while having only a handful of inspection teams, maintenance vehicles, and hours available. Multiple locations can show warning signs simultaneously, and existing tools report rainfall intensity, water levels, flooding, and vulnerable assets individually, but final prioritization is still left to human interpretation under time pressure.
+Problem statement
+How can heterogeneous environmental and infrastructure data be converted into an explainable, spatially prioritized action plan when government resources are limited?
+3. Goals & Objectives
+3.1 Product Goals
+Fuse satellite, weather, GIS, and IoT sensor data into a single infrastructure risk signal.
+Rank vulnerable infrastructure assets by urgency using an explainable ML model.
+Translate risk into a concrete, actionable recommendation (monitor, inspect, intervene) rather than a raw score.
+Demonstrate a complete physical-to-digital decision loop within a 12-week academic timeline.
+3.2 Non-Goals (Out of Scope for this Prototype)
+Full city-wide deployment or 100+ physical sensors.
+Real integration with government emergency-dispatch systems.
+A full digital twin of an entire city, or autonomous traffic control.
+Custom satellite models trained from scratch, or drone-based data collection.
+4. Existing Solutions & Gap Analysis
+Each of the following approaches already exists and solves part of the problem. ORACLE Edge's contribution is an integration layer that turns their combined output into an operational, prioritized recommendation.
+Existing Approach
+What It Does
+Gap
+Manual inspection
+Physical assessment
+Slow, manpower-intensive
+Water-level IoT
+Local measurement
+Limited spatial context
+Weather systems
+Rainfall / weather information
+Doesn't know infrastructure criticality
+Satellite monitoring
+Large-area observation
+Not continuous ground truth
+CCTV
+Visual monitoring
+Infrastructure and operating cost
+GIS
+Spatial visualization
+Usually doesn't produce operational priority
+Flood prediction models
+Estimate hazard
+May not translate into resource allocation
+Opportunity
+An integrated decision layer that combines these signals and converts them into a prioritized operational recommendation.
+5. Product Overview
+ORACLE Edge is composed of four major product modules:
+Module
+Description
+A. ORACLE Edge Node
+Physical hardware — ESP32-based sensor node collecting water-level, rainfall, and environmental readings.
+B. ORACLE Intelligence Engine
+ML / data-fusion / risk engine that computes hazard, exposure, vulnerability, and risk scores.
+C. ORACLE Spatial Command Center
+GIS web dashboard for visualizing assets, risk, and recommended actions.
+D. ORACLE Action Engine
+Converts risk and priority scores into a recommended intervention and assigns resources.
+5.1 System Data Flow
+The end-to-end loop the prototype must demonstrate:
+Physical Environment  →  Edge Sensing  →  Cloud  →  AI / Data Fusion  →  Risk Prioritization  →  Action Recommendation  →  Physical Alert
+6. Data Requirements
+The MVP is built on five core data categories, deliberately scoped to avoid data-collection sprawl.
+6.1 Satellite Imagery — Sentinel-2 (primary)
+Sentinel-2 Level-2A Surface Reflectance provides multispectral imagery for water and land-cover observation, with a 5-day revisit interval via Earth Engine's harmonized collections. Used for water extent, land-cover context, NDWI, and change detection.
+NDWI formulation: NDWI = (Green − NIR) / (Green + NIR), producing a water probability / water mask.
+6.2 Satellite Imagery — Sentinel-1 (enhancement, optional)
+Sentinel-1 SAR data can be acquired regardless of cloud cover, complementing optical Sentinel-2 imagery. For the first prototype, Sentinel-2 + NDWI is sufficient; Sentinel-1 is added as an enhancement, not a dependency.
+6.3 Weather / Rainfall
+Primary: Open-Meteo — historical and forecast precipitation, temperature, humidity, and wind, sourced from ERA5/ERA5-Land and higher-resolution model products.
+Secondary / research layer: NASA GPM IMERG — near-real-time global precipitation at 30-minute temporal and ~0.1° spatial resolution.
+Required derived variables: rainfall_last_1h, rainfall_last_3h, rainfall_last_24h, forecast_rainfall.
+6.4 GIS / Infrastructure
+Source: OpenStreetMap, queried via the Overpass API for tagged map objects. Extracted feature types: roads, bridges, hospitals, schools, buildings, waterways, railways.
+6.5 Elevation
+Source: NASA SRTM DEM (~30 m resolution, via Google Earth Engine). Used to derive elevation, slope, and drainage/terrain vulnerability context.
+7. Machine Learning Requirements
+ORACLE Edge separates two distinct ML problems rather than training one large model for everything.
+7.1 Problem A — Satellite Water / Flood Detection
+Baseline (MVP): NDWI thresholding — a working water-detection module with no training required.
+Advanced (Phase 2): Sen1Floods11 — a georeferenced Sentinel-1 flood dataset for training/testing a U-Net or lightweight segmentation model to produce a flood / non-flood mask.
+7.2 Problem B — Infrastructure Risk / Priority Model
+This is the core ORACLE intelligence model.
+Inputs
+Feature
+Feature
+Feature
+water_level
+rainfall_1h / 3h / 24h
+distance_to_water
+water_rise_rate
+forecast_rainfall
+elevation / slope
+satellite_water_area
+population_impact
+asset_criticality
+historical_incidents
+Outputs
+risk_score (0–100)
+priority_score (0–100)
+7.3 Algorithm Selection
+Recommended: XGBoost / LightGBM — strong performance on tabular data, fast, explainable, easy to deploy, and effective with mixed numerical features and modest dataset sizes. Logistic Regression and Random Forest should be trained as comparison baselines to support a proper model-selection evaluation.
+7.4 Training Data Strategy
+Labelled Indian infrastructure-failure data at scale is unlikely to be available, so training uses a hybrid strategy combining historical/public event data, satellite-derived features, weather history, and expert-designed synthetic sensor scenarios (e.g., low rainfall + stable water → Low Risk; extreme rainfall + flooding + hospital dependency → Critical Risk). This limitation must be stated explicitly in the final report as an academically honest scoping decision — field deployment would require calibrated municipal sensor data.
+8. Risk & Priority Scoring Model
+8.1 Component Scores
+Score
+Composed Of
+Hazard (H)
+rainfall + water_level + water_rise_rate + satellite_water_change + terrain
+Exposure (E)
+population + roads + buildings + critical_facilities
+Vulnerability (V)
+asset_criticality + historical_failure + terrain
+RISK = f(H, E, V), learned by the ML model rather than hard-coded, so the scoring logic remains explainable while still being data-driven.
+8.2 Priority Score
+The highest-hazard location is not automatically priority #1 — consequence of failure matters. Example: Location A (flood risk 95, population impact 20, no hospital dependency) may be ranked below Location B (flood risk 82, population impact 90, hospital dependency 100), because B's failure carries greater human consequence.
+8.3 Explainability
+Each risk score must be decomposable into contributing-factor weights (e.g., via SHAP), surfaced to the user as a "Why this risk?" breakdown rather than an opaque number.
+9. Action Engine & Resource Allocation
+9.1 Risk-to-Action Thresholds
+Score Range
+Status
+Action
+0–30
+🟢 Low
+Monitor
+31–60
+🟡 Moderate
+Increased Monitoring
+61–80
+🟠 High
+Schedule Inspection
+81–100
+🔴 Critical
+Immediate Intervention
+9.2 Asset-Type Rules
+Bridge + critical risk → Dispatch inspection team.
+Drain + critical risk → Dispatch maintenance team.
+Road + critical risk → Recommend traffic diversion.
+School + severe flood exposure → Issue emergency warning.
+9.3 Resource Allocation
+Given a fixed number of available teams, the Action Engine assigns them against ranked priorities — e.g., with 3 teams available and priorities Bridge B17, Drain D03, Road R08 ranked #1–#3, ORACLE assigns Team A → B17, Team B → D03, Team C → R08. This moves the system from prediction toward an operational decision-support product.
+10. Hardware Requirements — ORACLE Edge Node v1
+10.1 Required Components
+ESP32 microcontroller
+Waterproof ultrasonic (or equivalent) water-level sensor
+Rain sensor
+LED and buzzer (physical alert)
+Breadboard / PCB, power supply
+10.2 Optional Components
+MPU6050 tilt/vibration sensor
+DHT22 temperature/humidity sensor
+OLED display, GPS module
+10.3 Sample Telemetry Payload
+{ "device_id": "ORACLE-001", "timestamp": "2026-09-09T18:30:00", "water_level_cm": 72.4, "water_rise_rate_cm_min": 1.8, "rain_detected": true, "battery_voltage": 4.1 }
+10.4 Edge-to-Cloud Transport
+MQTT is preferred for architectural fidelity to a real IoT deployment (ESP32 → MQTT Broker → FastAPI ingestion service → PostgreSQL). If MQTT adds excessive early complexity, the team should start with HTTPS/REST and migrate to MQTT once the pipeline is stable.
+11. System & Cloud Architecture
+Internet → API Gateway → FastAPI application layer, ingesting sensor, weather, and satellite data in parallel into a common data pipeline, backed by PostgreSQL + PostGIS. A feature pipeline feeds the ML inference service, which produces a risk score and explanation; these feed the Priority Engine and then the Action Engine, which drives both the Dashboard and the Alert Service.
+11.1 MLOps Pipeline
+Data Collection → Data Validation → Feature Engineering → Model Training → Model Evaluation → Model Registry → Containerization → Cloud Deployment → Inference API → Monitoring.
+11.2 Technology Stack
+Layer
+Technology
+Languages / ML
+Python, Pandas, Scikit-learn, XGBoost
+MLOps
+MLflow, Docker, GitHub Actions
+Backend
+FastAPI
+Database
+PostgreSQL + PostGIS
+Cloud
+AWS / GCP (student/free tiers during development)
+Frontend
+React, Mapbox / MapLibre
+Edge
+ESP32, MQTT or HTTPS
+12. Data Model
+Core tables: users, assets, sensors, sensor_readings, weather_observations, satellite_observations, risk_scores, actions, incidents, teams, assignments.
+12.1 assets
+Field
+Example
+asset_id
+B17
+asset_type
+Bridge
+name
+Bridge B17
+latitude / longitude
+12.xxxx / 80.xxxx
+criticality
+0.95
+population_served
+12,000
+nearest_hospital
+YES
+historical_risk
+HIGH
+status
+ACTIVE
+12.2 sensors
+sensor_id, asset_id, device_id, sensor_type, latitude, longitude, installation_date, status.
+12.3 sensor_readings
+reading_id, sensor_id, timestamp, water_level, rainfall, rise_rate, battery.
+12.4 risk_scores
+risk_id, asset_id, timestamp, hazard_score, exposure_score, vulnerability_score, risk_score, priority_score, risk_level, model_version.
+12.5 actions
+action_id, asset_id, risk_id, recommended_action, priority, assigned_team, status, created_at, completed_at — so the system tracks actions taken, not only predictions generated.
+13. API Requirements
+Endpoint
+Purpose
+POST /api/v1/sensors/readings
+Ingest edge-node telemetry
+GET /api/v1/assets
+List infrastructure assets
+GET /api/v1/assets/{id}
+Asset detail
+GET /api/v1/risk
+Current risk scores
+GET /api/v1/risk/top
+Top-ranked priority assets
+GET /api/v1/map
+GIS map layer data
+GET /api/v1/recommendations
+Recommended actions
+POST /api/v1/actions/{id}/assign
+Assign a team to an action
+POST /api/v1/actions/{id}/complete
+Mark an action complete
+GET /api/v1/analytics
+System / historical analytics
+14. Dashboard Requirements — ORACLE Spatial Command Center
+The dashboard consists of six required screens:
+Command Center — headline counters: active alerts, critical assets, inspection teams available, people at risk.
+GIS Map — assets color-coded 🔴 Critical / 🟠 High / 🟡 Moderate / 🟢 Low, clickable for detail.
+Asset Details — risk score, priority rank, water level, rise rate, rainfall, population impact, status.
+Why This Risk? — explainability view showing contributing-factor weights (e.g., SHAP-based breakdown).
+Action Center — recommended action, assigned team, target response time, and reasoning.
+History — risk-over-time trend for a selected asset.
+15. Evaluation Metrics
+Area
+Metrics
+Hardware
+Sensor accuracy vs. known water levels
+ML — Risk Classification
+Accuracy, Precision, Recall, F1, ROC-AUC
+ML — Flood Segmentation
+IoU, Dice score, Precision, Recall
+System
+API latency, inference latency, data-ingestion rate, uptime, dashboard response time
+Decision Engine
+Priority Agreement — ORACLE's ranking vs. expert-defined scenario ranking
+Priority Agreement is emphasized as a stronger, more product-relevant evaluation than a bare model-accuracy figure, since it directly measures whether ORACLE's operational recommendation matches expert judgment.
+16. Success Criteria
+Layer
+Success Condition
+Hardware
+Sensor reliably detects changing water level
+Cloud
+Data reaches the backend and is stored correctly
+AI
+Risk score updates based on incoming features
+GIS
+Asset appears at the correct geographic location
+Decision
+Highest-priority asset is correctly identified
+Action
+A concrete recommendation is generated
+Physical
+LED / buzzer activates for a critical condition
+17. Implementation Plan
+17.1 Phased Delivery Levels
+Level
+Scope
+Level 1 — Must Have
+ESP32, water-level sensor, cloud ingestion, PostgreSQL, risk scoring, dashboard, physical alert
+Level 2 — Should Have
+Sentinel-2 water detection, Weather API, PostGIS, XGBoost, SHAP explanations, action assignment
+Level 3 — Wow
+Sentinel-1 SAR, flood segmentation model, multi-node simulation, resource optimization, 3D visualization, MLflow/model monitoring
+Level 1 must be completed and stable before Level 3 work begins.
+17.2 First Build Order
+The end-to-end loop is prioritized ahead of intelligence features, so the pipeline is never blocked waiting on satellite/ML work:
+ESP32 → Cloud API → Database → Risk Score → Dashboard → Alert
+Freeze MVP scope: ESP32 + water sensor + rain sensor + FastAPI + PostgreSQL + React + risk engine.
+Create the GitHub repository (backend, ml, frontend, edge, data, satellite, infrastructure, docker, docs).
+Set up PostgreSQL + PostGIS.
+Send one real/fake water-level reading from the ESP32.
+Receive it in FastAPI.
+Store it in PostgreSQL.
+Display the value on the dashboard — only after this works, add satellite and ML.
+17.3 12-Week Schedule
+Week
+Focus
+1
+Problem validation, requirements, architecture, dataset selection
+2
+Data pipeline: Weather API, OSM, satellite data, initial database
+3
+Hardware: ESP32, water sensor, rain sensor, basic transmission
+4
+Backend: FastAPI, PostgreSQL, PostGIS, sensor APIs
+5
+Satellite analytics: Sentinel-2, cloud masking, NDWI, water extent
+6
+Feature engineering (rainfall windows, water level/rise rate, elevation, slope, criticality, population impact)
+7
+ML: dataset prep, baseline models, XGBoost, evaluation
+8
+Decision engine: risk score, priority score, action rules, explainability
+9
+Dashboard: map, asset details, risk view, action center
+10
+Integration: hardware → cloud → ML → dashboard
+11
+Physical prototype: model construction, enclosure, LED/buzzer, demo scenario
+12
+Testing, documentation, final presentation
+18. Team Roles & Responsibilities
+Role
+Responsibilities
+ML + Cloud + MLOps Lead
+Feature engineering, model comparison (LogReg / RF / XGBoost), risk prediction, explainability, cloud deployment (FastAPI, Docker, API gateway), MLflow/CI-CD, satellite processing & NDWI
+Backend / Data / Security
+PostgreSQL + PostGIS, FastAPI integration, data validation, authentication, spatial query APIs
+Frontend / DTM
+React, Mapbox/MapLibre dashboard, UX, user testing, empathy mapping, design-thinking documentation
+Hardware / QA
+ESP32, sensors, MQTT, enclosure, physical model, hardware and stress testing
+19. Budget
+Component
+Approx. Cost (₹)
+ESP32
+400–700
+Water-level sensor
+150–500
+Rain sensor
+100–250
+MPU6050 (optional)
+100–200
+LED + buzzer
+50–150
+Breadboard
+100–200
+Jumper wires
+100–200
+Power supply
+200–400
+Acrylic / cardboard model
+500–1,000
+Tubing / water channel
+200–500
+Miscellaneous
+300–500
+Estimated Total
+2,200–4,600
+Target physical-prototype budget: ₹3,000–₹5,000. Cloud and data costs are kept low during development using student/free tiers and local Docker services.
+20. Explicitly Out of Scope
+To keep the 3-month prototype achievable, the following are deferred to future work:
+Full city-wide deployment
+100+ physical sensors
+Real government / emergency-dispatch integration
+A full digital twin of an entire city
+Complex drone-based data collection
+Custom satellite models trained from scratch
+Very large deep-learning models
+Autonomous traffic control
+21. Novelty Statement
+Positioning
+ORACLE Edge does not claim novelty in individual technologies such as IoT sensing, satellite monitoring, or flood prediction. Its contribution is integrating heterogeneous space, weather, ground, and infrastructure information into an explainable infrastructure-prioritization and action-recommendation workflow designed around constrained government resources.
+22. Demonstration Scenario
+A tabletop physical model (river, bridge, road, and a critical facility such as a hospital) with an embedded ESP32 node is used for the live demo, showing risk escalating in real time as conditions change:
+Step
+Condition
+Risk Score
+Status
+1
+Normal water (20 cm)
+22
+LOW
+2
+Rising water (40 cm)
+48
+MODERATE
+3
+Rapid rise (65 cm, high rise rate)
+76
+HIGH
+4
+Critical (75 cm, heavy rain, satellite flood signal, high-criticality bridge)
+92
+CRITICAL — Priority #1, "Inspect Bridge B17", LED + buzzer activate

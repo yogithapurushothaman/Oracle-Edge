@@ -1,0 +1,12 @@
+{
+  "name": "oracle-edge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ORACLE Edge - Space-to-Ground Infrastructure Decision Intelligence Platform",
+  "scripts": {
+    "dev": "npm run dev --prefix my-app",
+    "build": "npm run build --prefix my-app",
+    "start": "npm run start --prefix my-app",
+    "backend": "python -m uvicorn backend.main:app --reload --port 8000"
+  }
+}

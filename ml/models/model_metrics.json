@@ -1,0 +1,94 @@
+{
+  "classification_comparison": {
+    "Logistic Regression": {
+      "Accuracy": 0.7386,
+      "Precision": 0.7333,
+      "Recall": 0.7386,
+      "F1_Score": 0.7269,
+      "ROC_AUC": 0.8299
+    },
+    "Random Forest": {
+      "Accuracy": 0.8771,
+      "Precision": 0.8795,
+      "Recall": 0.8771,
+      "F1_Score": 0.8745,
+      "ROC_AUC": 0.969
+    },
+    "XGBoost": {
+      "Accuracy": 0.9029,
+      "Precision": 0.9027,
+      "Recall": 0.9029,
+      "F1_Score": 0.9015,
+      "ROC_AUC": 0.9813
+    }
+  },
+  "regression_metrics": {
+    "Model": "XGBoost",
+    "R2_Score": 0.9653,
+    "MAE": 1.79,
+    "RMSE": 2.25
+  },
+  "priority_agreement": {
+    "spearman_correlation": 1.0,
+    "priority_agreement_pct": 100.0,
+    "scenarios_evaluated": 4,
+    "details": [
+      {
+        "scenario": "Demo Step 1: Normal Water (20cm)",
+        "expert_rank": 4,
+        "model_rank": 4,
+        "predicted_risk": 45.6,
+        "expected_range": [
+          15,
+          30
+        ]
+      },
+      {
+        "scenario": "Demo Step 2: Rising Water (40cm)",
+        "expert_rank": 3,
+        "model_rank": 3,
+        "predicted_risk": 56.1,
+        "expected_range": [
+          35,
+          55
+        ]
+      },
+      {
+        "scenario": "Demo Step 3: Rapid Rise (65cm)",
+        "expert_rank": 2,
+        "model_rank": 2,
+        "predicted_risk": 71.8,
+        "expected_range": [
+          65,
+          80
+        ]
+      },
+      {
+        "scenario": "Demo Step 4: Critical Bridge B17 (75cm, heavy rain, high criticality)",
+        "expert_rank": 1,
+        "model_rank": 1,
+        "predicted_risk": 87.7,
+        "expected_range": [
+          85,
+          98
+        ]
+      }
+    ]
+  },
+  "feature_importances": {
+    "satellite_water_area": 0.18,
+    "water_level": 0.1749,
+    "asset_criticality": 0.1187,
+    "rainfall_3h": 0.1091,
+    "water_rise_rate": 0.0886,
+    "rainfall_1h": 0.0716,
+    "population_impact": 0.066,
+    "rainfall_24h": 0.0536,
+    "slope": 0.0385,
+    "historical_incidents": 0.0286,
+    "distance_to_water": 0.0273,
+    "elevation": 0.0243,
+    "forecast_rainfall": 0.0189
+  },
+  "best_model": "XGBoost"
+}
