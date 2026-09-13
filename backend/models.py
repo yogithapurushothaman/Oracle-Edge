@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional, Literal
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Float, DateTime, ForeignKey
+    create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from pydantic import BaseModel, Field
@@ -75,6 +75,7 @@ class Action(Base):
 
     action_id = Column(String, primary_key=True, index=True)
     asset_id = Column(String, ForeignKey("assets.asset_id"), index=True, nullable=False)
+    action_type = Column(String, default="DEPLOY_CREW", nullable=False)
     recommended_action = Column(String, nullable=False)
     priority = Column(Integer, default=1)
     priority_score = Column(Float, default=50.0)
@@ -82,11 +83,16 @@ class Action(Base):
     assigned_team = Column(String, nullable=True)
     target_response_time = Column(String, default="15 mins")
     status = Column(String, default="PENDING")  # "PENDING" | "DISPATCHED" | "COMPLETED"
+    buzzer_silenced = Column(Boolean, default=False)
     reasoning = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     dispatched_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     countdown_seconds = Column(Integer, default=900)
+
+    @property
+    def id(self) -> str:
+        return self.action_id
 
 
 class Team(Base):
@@ -98,6 +104,28 @@ class Team(Base):
     hazard_domain = Column(String, default="FLOOD")
     status = Column(String, default="AVAILABLE")  # "AVAILABLE" | "DISPATCHED"
     current_assignment = Column(String, nullable=True)
+
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    device_id = Column(String, primary_key=True, index=True)
+    device_name = Column(String, default="ORACLE Edge ESP32 Node", nullable=True)
+    status = Column(String, default="ONLINE")  # "ONLINE" | "OFFLINE"
+    last_seen = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    def is_online(self) -> bool:
+        if not self.last_seen:
+            return False
+        return (datetime.utcnow() - self.last_seen).total_seconds() <= 8.0
+
+    def last_seen_seconds(self) -> int:
+        if not self.last_seen:
+            return 999999
+        return max(0, int((datetime.utcnow() - self.last_seen).total_seconds()))
+
+    def get_status(self) -> str:
+        return "ONLINE" if self.is_online() else "OFFLINE"
 
 
 # ==========================================
@@ -117,7 +145,7 @@ class TelemetryPayload(BaseModel):
 
 
 class ActuatorState(BaseModel):
-    status: Literal["CRITICAL", "SAFE"] = Field(..., description="Asset alert status")
+    status: str = Field("SAFE", description="Asset alert status (CRITICAL, HIGH, MODERATE, SAFE)")
     led_safe: bool = Field(..., description="Green safe LED control signal")
     led_critical: bool = Field(..., description="Red critical LED control signal")
 
@@ -158,19 +186,22 @@ class AssetOut(BaseModel):
 
 
 class ActionAssignIn(BaseModel):
-    team_id: str = Field(..., description="Team ID to assign, e.g. TEAM-CHARLIE", example="TEAM-CHARLIE")
+    team_id: Optional[str] = Field(None, description="Team ID to assign, e.g. TEAM-ALPHA", example="TEAM-ALPHA")
+    team_name: Optional[str] = Field(None, description="Team name to assign, e.g. Team Alpha", example="Team Alpha")
 
 
 class ActionOut(BaseModel):
     action_id: str
     asset_id: str
+    action_type: Optional[str] = "DEPLOY_CREW"
     recommended_action: str
     priority: int
     priority_score: float
-    target_hazard: str
+    target_hazard: Optional[str] = "FLOOD"
     assigned_team: Optional[str] = None
     target_response_time: str
     status: str
+    buzzer_silenced: bool = False
     reasoning: Optional[str] = None
     created_at: datetime
     dispatched_at: Optional[datetime] = None
@@ -228,10 +259,12 @@ def init_db():
             "ALTER TABLE assets ADD COLUMN domain VARCHAR DEFAULT 'URBAN_INFRASTRUCTURE'",
             "ALTER TABLE assets ADD COLUMN target_hazard VARCHAR DEFAULT 'FLOOD'",
             "ALTER TABLE teams ADD COLUMN hazard_domain VARCHAR DEFAULT 'FLOOD'",
+            "ALTER TABLE actions ADD COLUMN action_type VARCHAR DEFAULT 'DEPLOY_CREW'",
             "ALTER TABLE actions ADD COLUMN target_hazard VARCHAR DEFAULT 'FLOOD'",
             "ALTER TABLE actions ADD COLUMN countdown_seconds INTEGER DEFAULT 900",
             "ALTER TABLE actions ADD COLUMN dispatched_at TIMESTAMP",
             "ALTER TABLE actions ADD COLUMN priority_score FLOAT DEFAULT 50.0",
+            "ALTER TABLE actions ADD COLUMN buzzer_silenced BOOLEAN DEFAULT 0",
         ]:
             try:
                 conn.execute(text(col_stmt))
@@ -243,6 +276,7 @@ def init_db():
     with SessionLocal() as db:
         seed_assets(db)
         seed_teams(db)
+        seed_devices(db)
 
 
 
@@ -300,45 +334,39 @@ def seed_assets(db: Session):
 def seed_teams(db: Session):
     """
     Seed municipal emergency response dispatch teams per PRD Section 9.3 & Step 4:
-    - TEAM-ALPHA: Flood Barrier Crew
-    - TEAM-BRAVO: Bridge Structural Inspection
-    - TEAM-CHARLIE: Forestry Fire Rangers
-    - TEAM-DELTA: Industrial Power Grid Unit
+    - TEAM-ALPHA: Team Alpha
+    - TEAM-BRAVO: Team Bravo
+    - TEAM-CHARLIE: Team Charlie
     """
     initial_teams = [
         {
             "team_id": "TEAM-ALPHA",
-            "team_name": "Team Alpha - Flood Barrier Crew",
-            "specialty": "Rapid Sandbagging & High-Capacity Drainage",
+            "team_name": "Team Alpha",
+            "specialty": "Rapid Flood Barrier & Inundation Defense",
             "hazard_domain": "FLOOD",
             "status": "AVAILABLE",
             "current_assignment": None
         },
         {
             "team_id": "TEAM-BRAVO",
-            "team_name": "Team Bravo - Bridge Structural Inspection",
-            "specialty": "Structural Pier Scour & Ultrasonic Stress Testing",
+            "team_name": "Team Bravo",
+            "specialty": "Bridge Structural Inspection & Pier Scour",
             "hazard_domain": "STRUCTURAL",
             "status": "AVAILABLE",
             "current_assignment": None
         },
         {
             "team_id": "TEAM-CHARLIE",
-            "team_name": "Team Charlie - Forestry Fire Rangers",
-            "specialty": "Thermal Anomaly & Wildfire Perimeter Containment",
-            "hazard_domain": "WILDFIRE",
-            "status": "AVAILABLE",
-            "current_assignment": None
-        },
-        {
-            "team_id": "TEAM-DELTA",
-            "team_name": "Team Delta - Industrial Power Grid Unit",
-            "specialty": "Electrical Substation Submergence Isolation",
-            "hazard_domain": "INDUSTRIAL",
+            "team_name": "Team Charlie",
+            "specialty": "Rapid Emergency Response & Evacuation Unit",
+            "hazard_domain": "FLOOD",
             "status": "AVAILABLE",
             "current_assignment": None
         }
     ]
+
+    # Clean up any legacy teams beyond the 3 required
+    db.query(Team).filter(Team.team_id.notin_(["TEAM-ALPHA", "TEAM-BRAVO", "TEAM-CHARLIE"])).delete(synchronize_session=False)
 
     for item in initial_teams:
         team = db.query(Team).filter(Team.team_id == item["team_id"]).first()
@@ -350,3 +378,21 @@ def seed_teams(db: Session):
             team.specialty = item["specialty"]
             team.hazard_domain = item["hazard_domain"]
     db.commit()
+
+
+def seed_devices(db: Session):
+    """
+    Seed tabletop ESP32 hardware device node:
+    - ORACLE-ESP32-01: ESP32 Hardware Node
+    """
+    default_device_id = "ORACLE-ESP32-01"
+    dev = db.query(Device).filter(Device.device_id == default_device_id).first()
+    if not dev:
+        dev = Device(
+            device_id=default_device_id,
+            device_name="ESP32 Tabletop Hardware Node (Dual HC-SR04 & MPU6050)",
+            status="ONLINE",
+            last_seen=datetime.utcnow()
+        )
+        db.add(dev)
+        db.commit()

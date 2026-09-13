@@ -27,6 +27,9 @@ try:
 except ImportError:
     XGB_AVAILABLE = False
 
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from ml.dataset import generate_synthetic_dataset, get_expert_benchmark_scenarios, FEATURE_COLUMNS
 
 def train_and_evaluate_all():

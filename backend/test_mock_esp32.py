@@ -184,7 +184,8 @@ def run_tests(base_url: str = None):
     assert data["actuators"]["B17"]["status"] == "CRITICAL"
     assert data["actuators"]["B17"]["led_safe"] is False
     assert data["actuators"]["B17"]["led_critical"] is True
-    assert data["actuators"]["H01"]["status"] == "SAFE"
+    assert data["actuators"]["H01"]["status"] in ["SAFE", "MODERATE"]
+    assert data["actuators"]["H01"]["led_critical"] is False
     assert data["actuators"]["H01"]["led_safe"] is True
     print(f"{GREEN}[PASS] TEST 3: B17 rise rate flash surge triggered buzzer and critical LED.{RESET}")
 

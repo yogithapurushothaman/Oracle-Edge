@@ -25,7 +25,7 @@ import {
   SunIcon,
   MoonIcon,
 } from "./components/Icons";
-import { AssetMonitoringData, ActionItem, TeamItem } from "./types";
+import { AssetMonitoringData, ActionItem, TeamItem, DeviceStatus } from "./types";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -101,12 +101,39 @@ export default function OracleCommandCenter() {
   const [lastTelemetryTime, setLastTelemetryTime] = useState<string>("Active Feed");
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
+  const [availableTeamsCount, setAvailableTeamsCount] = useState<number>(3);
+  const [totalTeamsCount, setTotalTeamsCount] = useState<number>(3);
+  const [buzzerSilenced, setBuzzerSilenced] = useState<boolean>(false);
+  const [apiStatus, setApiStatus] = useState<{ open_meteo: string; sentinel_2: string }>({
+    open_meteo: "LIVE",
+    sentinel_2: "FALLBACK",
+  });
+  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({
+    device_id: "ORACLE-ESP32-01",
+    status: "ONLINE",
+    last_seen_sec: 0,
+  });
   const [telemetryHistory, setTelemetryHistory] = useState<TelemetryPoint[]>(generateInitialTelemetryHistory);
   const prevCriticalRef = React.useRef<boolean>(true);
 
   // Apply new state from backend snapshot / SSE event
   const applyStateUpdate = useCallback((data: any) => {
     if (!data) return;
+
+    if (data.device_status) {
+      setDeviceStatus(data.device_status);
+    } else if (
+      data.device_id &&
+      (data.status === "ONLINE" || data.status === "OFFLINE") &&
+      typeof data.last_seen_sec === "number"
+    ) {
+      setDeviceStatus({
+        device_id: data.device_id,
+        status: data.status,
+        last_seen_sec: data.last_seen_sec,
+        last_seen: data.last_seen,
+      });
+    }
 
     if (data.assets && Array.isArray(data.assets)) {
       setAssets(data.assets);
@@ -133,6 +160,15 @@ export default function OracleCommandCenter() {
     if (data.teams && Array.isArray(data.teams)) {
       setTeams(data.teams);
     }
+    if (typeof data.available_teams_count === "number") {
+      setAvailableTeamsCount(data.available_teams_count);
+    }
+    if (typeof data.total_teams_count === "number") {
+      setTotalTeamsCount(data.total_teams_count);
+    }
+    if (typeof data.buzzer_silenced === "boolean") {
+      setBuzzerSilenced(data.buzzer_silenced);
+    }
     if (data.top_priority) {
       setTopPriority(data.top_priority);
     }
@@ -144,6 +180,12 @@ export default function OracleCommandCenter() {
     }
     if (data.action_level) {
       setActionLevel(data.action_level);
+    }
+    if (data.api_status) {
+      setApiStatus({
+        open_meteo: data.api_status.open_meteo || "LIVE",
+        sentinel_2: data.api_status.sentinel_2 || "FALLBACK",
+      });
     }
     if (data.timestamp) {
       const date = new Date(data.timestamp);
@@ -276,18 +318,21 @@ export default function OracleCommandCenter() {
   };
 
   // Dispatch Team Action Handler
-  const handleAssignTeam = async (actionId: string, teamId: string) => {
+  const handleAssignTeam = async (actionId: string, teamIdOrName?: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/actions/${actionId}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ team_id: teamId }),
+        body: JSON.stringify({ team_name: teamIdOrName, team_id: teamIdOrName }),
       });
       if (res.ok) {
         const updatedAction = await res.json();
         setActions((prev) =>
-          prev.map((a) => (a.action_id === actionId ? updatedAction : a))
+          prev.map((a) => (a.action_id === updatedAction.action_id ? updatedAction : a))
         );
+        setBuzzerSilenced(true);
+        setBuzzer(false);
+        setAvailableTeamsCount((prev) => Math.max(0, prev - 1));
       }
     } catch (err) {
       console.error("Assign team error:", err);
@@ -303,8 +348,9 @@ export default function OracleCommandCenter() {
       if (res.ok) {
         const updatedAction = await res.json();
         setActions((prev) =>
-          prev.map((a) => (a.action_id === actionId ? updatedAction : a))
+          prev.map((a) => (a.action_id === updatedAction.action_id ? updatedAction : a))
         );
+        setAvailableTeamsCount((prev) => Math.min(totalTeamsCount, prev + 1));
       }
     } catch (err) {
       console.error("Complete action error:", err);
@@ -368,10 +414,32 @@ export default function OracleCommandCenter() {
 
           {/* Quick Status Badges */}
           <div className="hidden xl:flex items-center gap-2.5">
-            {/* Node Health */}
-            <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-500 dark:bg-emerald-400 animate-ping" : "bg-rose-500"}`} />
-              <span>{isConnected ? "🟢 Live Grid Ingestion Active" : "🔴 Stream Reconnecting"}</span>
+            {/* ESP32 Hardware Node Watchdog Connection Badge */}
+            <div
+              title={`ESP32 Hardware Node (8.0s timeout). Last seen: ${deviceStatus.last_seen_sec}s ago`}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-2 transition-all ${
+                deviceStatus.status === "ONLINE"
+                  ? "bg-slate-100 dark:bg-slate-900/90 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300"
+                  : "bg-amber-500/15 dark:bg-amber-950/50 border-amber-500/40 text-amber-700 dark:text-amber-300 shadow-sm animate-pulse"
+              }`}
+            >
+              <span className="relative flex h-2 w-2">
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    deviceStatus.status === "ONLINE" ? "bg-emerald-400" : "bg-amber-500"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    deviceStatus.status === "ONLINE" ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                />
+              </span>
+              <span className="font-mono">
+                {deviceStatus.status === "ONLINE"
+                  ? `ESP32 Node: ONLINE (${Math.max(1, deviceStatus.last_seen_sec || 3)}s ping)`
+                  : "ESP32 Node: DISCONNECTED / RECONNECTING"}
+              </span>
             </div>
 
             {/* Active Alert Pill */}
@@ -389,10 +457,63 @@ export default function OracleCommandCenter() {
               <span>{criticalCount > 0 ? `🚨 ${criticalCount} CRITICAL ALERT` : "🟢 SYSTEM NORMAL"}</span>
             </div>
 
+            {/* Active Available Inspection Teams Badge */}
+            <div
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 border transition-all ${
+                availableTeamsCount === 3
+                  ? "bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                  : availableTeamsCount > 0
+                  ? "bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                  : "bg-rose-500/10 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-500/40 animate-pulse"
+              }`}
+            >
+              <UsersIcon className="w-3.5 h-3.5" />
+              <span>Available Teams: {availableTeamsCount} / {totalTeamsCount}</span>
+            </div>
+
             {/* Decision Status */}
             <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-cyan-700 dark:text-cyan-300 flex items-center gap-1.5 font-mono">
               <CpuIcon className="w-3.5 h-3.5 text-cyan-500 dark:text-cyan-400" />
               <span>Multi-Hazard Engine (Flood • Wildfire • Structural)</span>
+            </div>
+
+            {/* External APIs Resiliency Status Pills */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+              <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Services:</span>
+              
+              {/* Open-Meteo Pill */}
+              <span
+                title={
+                  apiStatus.open_meteo === "LIVE"
+                    ? "Open-Meteo Weather API: Online (2.0s strict timeout)"
+                    : "Open-Meteo Weather API: Resilient cached/nominal fallback active"
+                }
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-extrabold flex items-center gap-1 border transition-all ${
+                  apiStatus.open_meteo === "LIVE"
+                    ? "bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    : "bg-amber-500/10 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-500/40"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${apiStatus.open_meteo === "LIVE" ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
+                <span>Meteo: {apiStatus.open_meteo}</span>
+              </span>
+
+              {/* Sentinel-2 Pill */}
+              <span
+                title={
+                  apiStatus.sentinel_2 === "LIVE"
+                    ? "Sentinel-2 MSI Level-2A: Active optical raster feed"
+                    : "Sentinel-2: Nominal baseline fallback active (satellite_ndwi_delta: 0.12)"
+                }
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-extrabold flex items-center gap-1 border transition-all ${
+                  apiStatus.sentinel_2 === "LIVE"
+                    ? "bg-emerald-500/10 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                    : "bg-cyan-500/10 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400 border-cyan-500/40"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${apiStatus.sentinel_2 === "LIVE" ? "bg-emerald-500 animate-ping" : "bg-cyan-500"}`} />
+                <span>Sentinel-2: {apiStatus.sentinel_2}</span>
+              </span>
             </div>
           </div>
 
@@ -497,6 +618,11 @@ export default function OracleCommandCenter() {
                     actionLevel={actionLevel}
                     topPriority={topPriority}
                     buzzer={buzzer}
+                    buzzerSilenced={buzzerSilenced}
+                    activeAction={actions.find((a) => a.asset_id === topPriority && a.status !== "COMPLETED") || actions[0]}
+                    availableTeams={availableTeamsCount}
+                    onAssignAction={handleAssignTeam}
+                    onCompleteAction={handleCompleteAction}
                   />
                 </div>
               </div>
@@ -518,6 +644,9 @@ export default function OracleCommandCenter() {
                 <DualMonitoringCards
                   assets={assets}
                   buzzerActive={buzzer}
+                  buzzerSilenced={buzzerSilenced}
+                  apiStatus={apiStatus}
+                  isDeviceOffline={deviceStatus.status === "OFFLINE"}
                 />
               </div>
             </>

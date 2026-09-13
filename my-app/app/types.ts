@@ -36,6 +36,7 @@ export interface AssetMonitoringData {
   tilt_deg?: number;
   vibration_g?: number;
   scour_risk_pct?: number;
+  satellite_ndwi_delta?: number;
   priority_score: number;
   risk_score: number;
   priority_rank: number;
@@ -145,5 +146,18 @@ export interface ModelComparisonMetric {
   latency_ms: number;
   is_selected: boolean;
 }
+
+export interface ApiStatus {
+  open_meteo: "LIVE" | "FALLBACK" | string;
+  sentinel_2: "LIVE" | "FALLBACK" | string;
+}
+
+export interface DeviceStatus {
+  device_id: string;
+  status: "ONLINE" | "OFFLINE";
+  last_seen_sec: number;
+  last_seen?: string;
+}
+
 
 

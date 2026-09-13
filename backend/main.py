@@ -26,19 +26,23 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 try:
     from backend.models import (
         init_db, get_db, SessionLocal, Asset, TelemetryReading,
-        Action, Team, TelemetryPayload, TelemetryResponse, ActuatorState,
-        AssetRegisterIn, AssetOut, ActionAssignIn, ActionOut, TeamOut, TelemetryReadingOut
+        Action, Team, Device, TelemetryPayload, TelemetryResponse, ActuatorState,
+        AssetRegisterIn, AssetOut, ActionAssignIn, ActionOut, TeamOut, TelemetryReadingOut,
+        SensorReadingIn
     )
     from backend.services.decision_engine import decision_engine
     from backend.services.weather_service import weather_service
+    from backend.services.satellite_service import satellite_service
 except ImportError:
     from models import (
         init_db, get_db, SessionLocal, Asset, TelemetryReading,
-        Action, Team, TelemetryPayload, TelemetryResponse, ActuatorState,
-        AssetRegisterIn, AssetOut, ActionAssignIn, ActionOut, TeamOut, TelemetryReadingOut
+        Action, Team, Device, TelemetryPayload, TelemetryResponse, ActuatorState,
+        AssetRegisterIn, AssetOut, ActionAssignIn, ActionOut, TeamOut, TelemetryReadingOut,
+        SensorReadingIn
     )
     from services.decision_engine import decision_engine
     from services.weather_service import weather_service
+    from services.satellite_service import satellite_service
 
 
 # Active SSE subscribers
@@ -73,20 +77,73 @@ app.add_middleware(
 # Dashboard State Helper
 # ==========================================
 
-def calculate_risk_score_out_of_100(water_level_cm: float, rise_rate_cm_min: float, criticality: float, is_critical: bool) -> float:
+def calculate_risk_score_out_of_100(water_level_cm: float, rise_rate_cm_min: float, criticality: float, is_critical: bool, is_full_scale: bool = False) -> float:
     """Calculates an intuitive 0-100 risk score aligned with critical thresholds."""
-    if is_critical:
-        # 80 - 99 scale for Critical events
-        base = 82.0 + (water_level_cm - 18.0) * 1.5 + (rise_rate_cm_min * 4.0) + (criticality * 6.0)
-        return min(99.0, max(82.0, round(base, 1)))
-    elif water_level_cm >= 12.0 or rise_rate_cm_min >= 0.5:
-        # 45 - 79 scale for Moderate events
-        base = 45.0 + (water_level_cm - 12.0) * 3.5 + (rise_rate_cm_min * 15.0) + (criticality * 10.0)
-        return min(79.0, max(45.0, round(base, 1)))
+    if is_full_scale or water_level_cm > 30.0:
+        # Full scale 0-85cm (PRD Demonstration Scenario)
+        if is_critical or water_level_cm >= 70.0:
+            base = 88.0 + (water_level_cm - 70.0) * 0.7 + (rise_rate_cm_min * 2.0) + (criticality * 4.0)
+            return min(99.0, max(85.0, round(base, 1)))
+        elif water_level_cm >= 55.0 or rise_rate_cm_min >= 1.5:
+            base = 66.0 + (water_level_cm - 55.0) * 0.7 + (rise_rate_cm_min * 3.5)
+            return min(80.0, max(65.0, round(base, 1)))
+        elif water_level_cm >= 35.0 or rise_rate_cm_min >= 0.6:
+            base = 42.0 + (water_level_cm - 35.0) * 0.6 + (rise_rate_cm_min * 4.0)
+            return min(60.0, max(35.0, round(base, 1)))
+        else:
+            base = 12.0 + (water_level_cm / 30.0) * 14.0 + (criticality * 4.0)
+            return min(30.0, max(10.0, round(base, 1)))
     else:
-        # 5 - 44 scale for Safe baseline
-        base = (water_level_cm / 12.0) * 30.0 + (rise_rate_cm_min * 10.0) + (criticality * 5.0)
-        return min(44.0, max(5.0, round(base, 1)))
+        # Tabletop scale 0-25cm
+        if is_critical:
+            base = 82.0 + (water_level_cm - 18.0) * 1.5 + (rise_rate_cm_min * 4.0) + (criticality * 6.0)
+            return min(99.0, max(82.0, round(base, 1)))
+        elif water_level_cm >= 12.0 or rise_rate_cm_min >= 0.5:
+            base = 45.0 + (water_level_cm - 12.0) * 3.5 + (rise_rate_cm_min * 15.0) + (criticality * 10.0)
+            return min(79.0, max(45.0, round(base, 1)))
+        else:
+            base = (water_level_cm / 12.0) * 30.0 + (rise_rate_cm_min * 10.0) + (criticality * 5.0)
+            return min(44.0, max(5.0, round(base, 1)))
+
+
+def get_device_heartbeat(device_id: str = "ORACLE-ESP32-01", db: Optional[Session] = None) -> dict:
+    """
+    Evaluates hardware watchdog status:
+    - If (now - last_seen).total_seconds() <= 8.0: ONLINE
+    - If (now - last_seen).total_seconds() > 8.0: OFFLINE
+    """
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        device = db.query(Device).filter(Device.device_id == device_id).first()
+        now = datetime.utcnow()
+        if not device or not device.last_seen:
+            return {
+                "device_id": device_id,
+                "status": "OFFLINE",
+                "last_seen_sec": 9999
+            }
+        elapsed = (now - device.last_seen).total_seconds()
+        is_online = elapsed <= 8.0
+        status_str = "ONLINE" if is_online else "OFFLINE"
+
+        if device.status != status_str:
+            device.status = status_str
+            try:
+                db.commit()
+            except Exception:
+                pass
+
+        return {
+            "device_id": device_id,
+            "status": status_str,
+            "last_seen_sec": max(0, int(elapsed))
+        }
+    finally:
+        if close_db:
+            db.close()
 
 
 def build_dashboard_state(db: Session) -> dict:
@@ -104,6 +161,7 @@ def build_dashboard_state(db: Session) -> dict:
         target_hazard = asset.target_hazard or "FLOOD"
         lat = asset.latitude if asset.latitude is not None else (13.0405 if asset.asset_id == "H01" else 13.0827)
         lng = asset.longitude if asset.longitude is not None else (80.2450 if asset.asset_id == "H01" else 80.2707)
+        satellite_ndwi_delta = 0.0
 
         # Multi-Hazard Scoring Dispatch
         if target_hazard == "WILDFIRE":
@@ -187,6 +245,13 @@ def build_dashboard_state(db: Session) -> dict:
                 status_str = "SAFE"
                 timestamp = datetime.utcnow().isoformat()
 
+            sat_obs = satellite_service.get_evaluator_observation(
+                asset.asset_id,
+                ground_water_level_cm=water_level,
+                ground_rise_rate_cm_min=rise_rate
+            )
+            satellite_ndwi_delta = float(sat_obs.get("satellite_ndwi_delta", 0.12))
+
             risk_score = calculate_risk_score_out_of_100(water_level, rise_rate, asset.criticality, is_critical)
             shap_factors = {
                 "Water Level Impact": 40.0,
@@ -223,6 +288,7 @@ def build_dashboard_state(db: Session) -> dict:
             "population_served": asset.population_served,
             "water_level_cm": round(water_level, 1),
             "rise_rate_cm_min": round(rise_rate, 2),
+            "satellite_ndwi_delta": round(satellite_ndwi_delta, 3),
             "surface_temp_c": surface_temp,
             "thermal_risk_pct": thermal_risk,
             "humidity_pct": humidity_val,
@@ -281,13 +347,14 @@ def build_dashboard_state(db: Session) -> dict:
                 priority=1,
                 priority_score=92.0,
                 target_hazard="FLOOD",
-                assigned_team="Team Alpha - Flood Barrier Crew",
+                assigned_team=None,
                 target_response_time="10 mins",
-                status="DISPATCHED",
+                status="PENDING",
+                buzzer_silenced=False,
                 reasoning="Water level surge near ICU basement inlet.",
                 created_at=datetime.utcnow(),
-                dispatched_at=datetime.utcnow(),
-                countdown_seconds=780
+                dispatched_at=None,
+                countdown_seconds=900
             ),
             Action(
                 action_id="ACT-B17-INIT",
@@ -299,6 +366,7 @@ def build_dashboard_state(db: Session) -> dict:
                 assigned_team=None,
                 target_response_time="20 mins",
                 status="PENDING",
+                buzzer_silenced=False,
                 reasoning="Hydrodynamic current rise on Adyar causeway.",
                 created_at=datetime.utcnow(),
                 countdown_seconds=1200
@@ -307,6 +375,32 @@ def build_dashboard_state(db: Session) -> dict:
         db.add_all(baseline_actions)
         db.commit()
         actions_in_db = db.query(Action).all()
+
+    # Closed-loop Buzzer Silence evaluation:
+    # If all critical assets have their active actions silenced (team dispatched), buzzer turns OFF.
+    any_unsilenced_critical = False
+    for asset_item in asset_data_list:
+        if asset_item["status"] == "CRITICAL":
+            act = db.query(Action).filter(
+                Action.asset_id == asset_item["asset_id"],
+                Action.status != "COMPLETED"
+            ).order_by(Action.created_at.desc()).first()
+            if not act or not act.buzzer_silenced:
+                any_unsilenced_critical = True
+
+    # Primary critical asset buzzer silence state for UI banner
+    primary_crit_asset = next((a for a in asset_data_list if a["status"] == "CRITICAL"), None)
+    if primary_crit_asset:
+        prim_act = db.query(Action).filter(
+            Action.asset_id == primary_crit_asset["asset_id"],
+            Action.status != "COMPLETED"
+        ).order_by(Action.created_at.desc()).first()
+        buzzer_silenced = bool(prim_act and prim_act.buzzer_silenced)
+    else:
+        buzzer_silenced = False
+
+    available_teams_count = db.query(Team).filter(Team.status == "AVAILABLE").count()
+    total_teams_count = db.query(Team).count()
 
     actions_list = [
         {
@@ -319,6 +413,7 @@ def build_dashboard_state(db: Session) -> dict:
             "assigned_team": act.assigned_team,
             "target_response_time": act.target_response_time,
             "status": act.status,
+            "buzzer_silenced": bool(act.buzzer_silenced),
             "reasoning": act.reasoning,
             "created_at": act.created_at.isoformat() if act.created_at else None,
             "dispatched_at": act.dispatched_at.isoformat() if act.dispatched_at else None,
@@ -346,9 +441,17 @@ def build_dashboard_state(db: Session) -> dict:
         "timestamp": datetime.utcnow().isoformat(),
         "device_id": "ORACLE-ESP32-01",
         "top_priority": top_priority_id,
-        "buzzer": any_critical,
+        "buzzer": any_unsilenced_critical,
+        "buzzer_silenced": buzzer_silenced,
+        "available_teams_count": available_teams_count,
+        "total_teams_count": total_teams_count,
         "action_level": action_level,
         "recommended_action": recommended_action,
+        "api_status": {
+            "open_meteo": weather_service.get_status(),
+            "sentinel_2": satellite_service.get_status()
+        },
+        "device_status": get_device_heartbeat("ORACLE-ESP32-01", db),
         "assets": asset_data_list,
         "actuators": actuators_dict,
         "actions": actions_list,
@@ -416,30 +519,54 @@ def ingest_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
 
     actuators: Dict[str, ActuatorState] = {}
     priority_scores: Dict[str, float] = {}
-    any_critical = False
+    any_unsilenced_critical = False
 
     for reading in payload.readings:
         # 1. Fetch asset criticality from database
         asset = db.query(Asset).filter(Asset.asset_id == reading.asset_id).first()
         criticality = asset.criticality if asset else 0.5
 
-        # 3. Critical threshold evaluation
-        is_critical = (reading.water_level_cm >= 18.0) or (reading.rise_rate_cm_min >= 1.0)
-        status_str = "CRITICAL" if is_critical else "SAFE"
-        if is_critical:
-            any_critical = True
+        # 3. Critical threshold evaluation (supporting full scale 80cm PRD demo and tabletop 25cm model)
+        is_full_scale = (reading.water_level_cm > 30.0) or (payload.device_id == "ORACLE-001")
+        if is_full_scale:
+            is_critical = (reading.water_level_cm >= 70.0) or (reading.rise_rate_cm_min >= 2.5)
+            is_elevated = (reading.water_level_cm >= 40.0) or (reading.rise_rate_cm_min >= 0.8)
+        else:
+            is_critical = (reading.water_level_cm >= 18.0) or (reading.rise_rate_cm_min >= 1.0)
+            is_elevated = (reading.water_level_cm >= 12.0) or (reading.rise_rate_cm_min >= 0.5)
+
+        status_str = "CRITICAL" if is_critical else ("MODERATE" if is_elevated else "SAFE")
+
+        # Check if active incident for this asset has been silenced (team dispatched)
+        active_action = db.query(Action).filter(
+            Action.asset_id == reading.asset_id,
+            Action.status != "COMPLETED"
+        ).order_by(Action.created_at.desc()).first()
+
+        is_silenced = bool(active_action and active_action.buzzer_silenced)
+        if is_critical and not is_silenced:
+            any_unsilenced_critical = True
 
         # 2. Priority Logic aligned with MultiHazard Decision Engine
-        if is_critical:
-            priority_score = min(99.0, max(82.0, 75.0 + (reading.water_level_cm * 0.5) + (criticality * 15.0)))
-        elif reading.water_level_cm >= 12.0 or reading.rise_rate_cm_min >= 0.5:
-            priority_score = min(79.0, max(45.0, 35.0 + (reading.water_level_cm * 1.5) + (criticality * 20.0)))
+        if is_full_scale:
+            if is_critical:
+                priority_score = min(99.0, max(88.0, 75.0 + (reading.water_level_cm * 0.2) + (criticality * 15.0)))
+            elif reading.water_level_cm >= 55.0:
+                priority_score = min(82.0, max(65.0, 45.0 + (reading.water_level_cm * 0.4) + (criticality * 15.0)))
+            elif reading.water_level_cm >= 35.0:
+                priority_score = min(60.0, max(40.0, 25.0 + (reading.water_level_cm * 0.5) + (criticality * 10.0)))
+            else:
+                priority_score = min(30.0, max(15.0, 10.0 + (reading.water_level_cm * 0.5) + (criticality * 10.0)))
         else:
-            priority_score = (reading.water_level_cm * 0.4) + (reading.rise_rate_cm_min * 0.2) + (criticality * 40.0)
+            if is_critical:
+                priority_score = min(99.0, max(82.0, 75.0 + (reading.water_level_cm * 0.5) + (criticality * 15.0)))
+            elif is_elevated:
+                priority_score = min(79.0, max(45.0, 35.0 + (reading.water_level_cm * 1.5) + (criticality * 20.0)))
+            else:
+                priority_score = (reading.water_level_cm * 0.4) + (reading.rise_rate_cm_min * 0.2) + (criticality * 40.0)
         priority_scores[reading.asset_id] = priority_score
 
-
-        # 4. Actuator states
+        # 4. Actuator states: Red LED stays lit for critical depth even when buzzer is silenced
         actuators[reading.asset_id] = ActuatorState(
             status=status_str,
             led_safe=not is_critical,
@@ -459,10 +586,24 @@ def ingest_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
         )
         db.add(db_reading)
 
+    # 5b. Update hardware watchdog heartbeat for ESP32 node
+    device = db.query(Device).filter(Device.device_id == payload.device_id).first()
+    if not device:
+        device = Device(
+            device_id=payload.device_id,
+            device_name=f"ORACLE {payload.device_id} Node",
+            status="ONLINE",
+            last_seen=datetime.utcnow()
+        )
+        db.add(device)
+    else:
+        device.last_seen = datetime.utcnow()
+        device.status = "ONLINE"
+
     db.commit()
 
     top_priority = max(priority_scores.items(), key=lambda x: x[1])[0]
-    buzzer = any_critical
+    buzzer = any_unsilenced_critical
 
     # 6. Broadcast updated state to all connected dashboard SSE clients
     current_state = build_dashboard_state(db)
@@ -506,16 +647,31 @@ async def stream_dashboard(request: Request):
         db.close()
 
     async def event_generator():
+        last_heartbeat_time = asyncio.get_event_loop().time()
         try:
             while True:
-                if await request.is_disconnected():
-                    break
                 try:
-                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    if await request.is_disconnected():
+                        break
+                except Exception:
+                    pass
+                try:
+                    time_since_last_hb = asyncio.get_event_loop().time() - last_heartbeat_time
+                    wait_time = max(0.1, 2.0 - time_since_last_hb)
+                    data = await asyncio.wait_for(queue.get(), timeout=wait_time)
                     yield f"data: {json.dumps(data)}\n\n"
                 except asyncio.TimeoutError:
-                    # Heartbeat comment to keep connection alive
-                    yield ": ping\n\n"
+                    pass
+
+                now_time = asyncio.get_event_loop().time()
+                if now_time - last_heartbeat_time >= 2.0:
+                    last_heartbeat_time = now_time
+                    db_watchdog = SessionLocal()
+                    try:
+                        hb = get_device_heartbeat("ORACLE-ESP32-01", db_watchdog)
+                        yield f"data: {json.dumps(hb)}\n\n"
+                    finally:
+                        db_watchdog.close()
         finally:
             subscribers.discard(queue)
 
@@ -529,6 +685,12 @@ async def stream_dashboard(request: Request):
             "Access-Control-Allow-Origin": "*"
         }
     )
+
+
+@app.get("/api/v1/device/status", summary="ESP32 hardware node watchdog and heartbeat status")
+def get_device_status(device_id: str = "ORACLE-ESP32-01", db: Session = Depends(get_db)):
+    """Returns dynamic watchdog status for the specified ESP32 hardware device."""
+    return get_device_heartbeat(device_id, db)
 
 
 # ==========================================
@@ -649,23 +811,81 @@ def list_actions(db: Session = Depends(get_db)):
     response_model=ActionOut,
     summary="Dispatch emergency response unit to an incident"
 )
-def assign_action(action_id: str, payload: ActionAssignIn, db: Session = Depends(get_db)):
-    """Assigns an emergency unit, starts the live response countdown, and broadcasts to dashboard."""
+def assign_action(action_id: str, payload: Optional[ActionAssignIn] = None, db: Session = Depends(get_db)):
+    """
+    Assigns an emergency unit, sets buzzer_silenced = True, starts live response countdown,
+    decrements available teams count, and broadcasts to dashboard.
+    """
+    # Look up action by action_id, or by asset_id (e.g. "H01")
     action = db.query(Action).filter(Action.action_id == action_id).first()
     if not action:
-        raise HTTPException(status_code=404, detail=f"Action '{action_id}' not found")
+        action = db.query(Action).filter(
+            Action.asset_id == action_id,
+            Action.status != "COMPLETED"
+        ).order_by(Action.created_at.desc()).first()
 
-    team = db.query(Team).filter(Team.team_id == payload.team_id).first()
-    team_name = team.team_name if team else payload.team_id
+    if not action:
+        # Check if action_id is a valid asset and create an incident ticket on-the-fly
+        asset = db.query(Asset).filter(Asset.asset_id == action_id).first()
+        if asset:
+            action = Action(
+                action_id=f"ACT-{asset.asset_id}-{int(datetime.utcnow().timestamp())}",
+                asset_id=asset.asset_id,
+                recommended_action=f"Deploy Emergency Response Team to {asset.name}",
+                priority=1 if asset.criticality >= 0.8 else 2,
+                priority_score=round(asset.criticality * 92.0, 1),
+                target_hazard=asset.target_hazard or "FLOOD",
+                status="PENDING",
+                buzzer_silenced=False,
+                created_at=datetime.utcnow(),
+                countdown_seconds=900
+            )
+            db.add(action)
+            db.commit()
+            db.refresh(action)
+        else:
+            raise HTTPException(status_code=404, detail=f"Action or Asset '{action_id}' not found")
+
+    # Determine team to assign
+    requested_team_id = payload.team_id if payload else None
+    requested_team_name = payload.team_name if payload else None
+
+    team = None
+    if requested_team_id or requested_team_name:
+        team = db.query(Team).filter(
+            (Team.team_id == requested_team_id) |
+            (Team.team_name == requested_team_name) |
+            (Team.team_name == requested_team_id)
+        ).first()
+
+    # If no team specified or requested not available, select next available team
+    if not team or team.status != "AVAILABLE":
+        team = db.query(Team).filter(Team.status == "AVAILABLE").first()
+
+    if not team:
+        raise HTTPException(
+            status_code=400,
+            detail="No available inspection teams. All 3 municipal teams ('Team Alpha', 'Team Bravo', 'Team Charlie') are currently deployed."
+        )
+
+    team_name = team.team_name
 
     action.assigned_team = team_name
     action.status = "DISPATCHED"
     action.dispatched_at = datetime.utcnow()
+    action.buzzer_silenced = True
     action.countdown_seconds = 900  # 15 mins
 
-    if team:
-        team.status = "DISPATCHED"
-        team.current_assignment = action.action_id
+    # Also silence any other pending/active actions for this asset
+    other_actions = db.query(Action).filter(
+        Action.asset_id == action.asset_id,
+        Action.status != "COMPLETED"
+    ).all()
+    for other in other_actions:
+        other.buzzer_silenced = True
+
+    team.status = "DISPATCHED"
+    team.current_assignment = action.action_id
 
     db.commit()
     db.refresh(action)
@@ -683,8 +903,14 @@ def assign_action(action_id: str, payload: ActionAssignIn, db: Session = Depends
     summary="Conclude incident and release municipal unit"
 )
 def complete_action(action_id: str, db: Session = Depends(get_db)):
-    """Marks action completed and returns team to available status."""
+    """Marks action completed, releases team back to AVAILABLE status, and broadcasts to dashboard."""
     action = db.query(Action).filter(Action.action_id == action_id).first()
+    if not action:
+        action = db.query(Action).filter(
+            Action.asset_id == action_id,
+            Action.status == "DISPATCHED"
+        ).order_by(Action.dispatched_at.desc()).first()
+
     if not action:
         raise HTTPException(status_code=404, detail=f"Action '{action_id}' not found")
 
@@ -692,7 +918,11 @@ def complete_action(action_id: str, db: Session = Depends(get_db)):
     action.completed_at = datetime.utcnow()
 
     if action.assigned_team:
-        team = db.query(Team).filter(Team.team_name == action.assigned_team).first()
+        team = db.query(Team).filter(
+            (Team.team_name == action.assigned_team) |
+            (Team.team_id == action.assigned_team) |
+            (Team.current_assignment == action.action_id)
+        ).first()
         if team:
             team.status = "AVAILABLE"
             team.current_assignment = None
@@ -719,11 +949,13 @@ def list_teams(db: Session = Depends(get_db)):
 
 @app.post(
     "/api/v1/sensors/readings",
-    summary="Compatibility endpoint for edge_simulator.py and firmware"
+    summary="Compatibility endpoint for edge_simulator.py and firmware (PRD Section 13)"
 )
 def ingest_readings_alias(raw_payload: Dict[str, Any], db: Session = Depends(get_db)):
     """Alias for /api/v1/sensors/telemetry supporting single-sensor edge simulator format."""
     device_id = raw_payload.get("device_id", "ORACLE-001")
+    asset_id = raw_payload.get("asset_id", "B17")
+    sensor_id = raw_payload.get("sensor_id", f"SNS-{asset_id}")
     water_level = float(raw_payload.get("water_level_cm", 20.0))
     rise_rate = float(raw_payload.get("water_rise_rate_cm_min", 0.1))
 
@@ -731,14 +963,166 @@ def ingest_readings_alias(raw_payload: Dict[str, Any], db: Session = Depends(get
         device_id=device_id,
         readings=[
             SensorReadingIn(
-                sensor_id="SNS-B17",
-                asset_id="B17",
+                sensor_id=sensor_id,
+                asset_id=asset_id,
                 water_level_cm=water_level,
                 rise_rate_cm_min=rise_rate
             )
         ]
     )
-    return ingest_telemetry(telemetry, db)
+    res = ingest_telemetry(telemetry, db)
+    state = build_dashboard_state(db)
+    target_asset = next((a for a in state.get("assets", []) if a["asset_id"] == asset_id), None)
+    
+    res_dict = {
+        "status": res.status,
+        "device_id": device_id,
+        "asset_id": asset_id,
+        "top_priority": res.top_priority,
+        "buzzer": res.buzzer,
+        "physical_alert_triggered": res.buzzer,
+        "actuators": {k: v.model_dump() if hasattr(v, "model_dump") else v for k, v in res.actuators.items()},
+        "risk_score": calculate_risk_score_out_of_100(water_level, rise_rate, target_asset.get("criticality", 0.75) if target_asset else 0.75, res.buzzer, is_full_scale=True),
+        "risk_level": target_asset.get("status") if target_asset else "MODERATE",
+        "priority_score": target_asset.get("priority_score") if target_asset else 50.0,
+        "recommended_action": state.get("recommended_action"),
+        "factors": [
+            {"factor": "Water Level", "value": f"{water_level:.1f} cm", "impact_pct": 45},
+            {"factor": "Rise Rate", "value": f"{rise_rate:.1f} cm/min", "impact_pct": 35},
+            {"factor": "Asset Criticality", "value": f"{target_asset.get('criticality', 0.8):.2f}" if target_asset else "0.80", "impact_pct": 20}
+        ]
+    }
+    return res_dict
+
+
+# ==========================================
+# PRD Section 13: Core Decision API Endpoints
+# ==========================================
+
+@app.get(
+    "/api/v1/risk",
+    summary="Current risk scores across all infrastructure assets (PRD Section 13)"
+)
+def get_risk_scores(db: Session = Depends(get_db)):
+    """Returns current calculated risk scores and contributing factors for all monitored assets."""
+    state = build_dashboard_state(db)
+    return state.get("assets", [])
+
+
+@app.get(
+    "/api/v1/risk/top",
+    summary="Top-ranked priority assets (PRD Section 13)"
+)
+def get_top_risk_assets(limit: int = 5, db: Session = Depends(get_db)):
+    """Returns top-ranked priority assets sorted descending by priority score."""
+    state = build_dashboard_state(db)
+    assets = state.get("assets", [])
+    return assets[:limit]
+
+
+@app.get(
+    "/api/v1/map",
+    summary="GIS map layer data in GeoJSON format (PRD Section 13)"
+)
+def get_map_layer(db: Session = Depends(get_db)):
+    """Returns GIS GeoJSON FeatureCollection with spatial locations and risk metrics."""
+    state = build_dashboard_state(db)
+    features = []
+    for asset in state.get("assets", []):
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [asset["longitude"], asset["latitude"]]
+            },
+            "properties": {
+                "asset_id": asset["asset_id"],
+                "name": asset["name"],
+                "type": asset.get("type"),
+                "domain": asset.get("domain"),
+                "target_hazard": asset.get("target_hazard"),
+                "risk_score": asset.get("risk_score"),
+                "priority_score": asset.get("priority_score"),
+                "priority_rank": asset.get("priority_rank"),
+                "status": asset.get("status"),
+                "water_level_cm": asset.get("water_level_cm"),
+                "rise_rate_cm_min": asset.get("rise_rate_cm_min"),
+                "criticality": asset.get("criticality"),
+                "population_served": asset.get("population_served"),
+                "shap_breakdown": asset.get("shap_breakdown")
+            }
+        })
+    return {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
+
+@app.get(
+    "/api/v1/recommendations",
+    summary="Recommended operational actions & dispatch queue (PRD Section 13)"
+)
+def get_recommendations(db: Session = Depends(get_db)):
+    """Returns recommended interventions and active action dispatch queue."""
+    state = build_dashboard_state(db)
+    actions = db.query(Action).order_by(Action.priority_score.desc()).all()
+    actions_out = [
+        ActionOut(
+            action_id=act.action_id,
+            asset_id=act.asset_id,
+            action_type=act.action_type or "DEPLOY_CREW",
+            recommended_action=act.recommended_action,
+            priority=act.priority,
+            priority_score=act.priority_score,
+            target_hazard=act.target_hazard or "FLOOD",
+            assigned_team=act.assigned_team,
+            target_response_time=act.target_response_time or "15 mins",
+            status=act.status,
+            buzzer_silenced=act.buzzer_silenced or False,
+            reasoning=act.reasoning,
+            created_at=act.created_at,
+            dispatched_at=act.dispatched_at,
+            completed_at=act.completed_at,
+            countdown_seconds=act.countdown_seconds or 900
+        ) for act in actions
+    ]
+    return {
+        "top_priority": state.get("top_priority"),
+        "recommended_action": state.get("recommended_action"),
+        "action_level": state.get("action_level"),
+        "actions": actions_out
+    }
+
+
+@app.get(
+    "/api/v1/analytics",
+    summary="System and historical analytics (PRD Section 13)"
+)
+def get_analytics(db: Session = Depends(get_db)):
+    """Returns operational analytics and system counters."""
+    state = build_dashboard_state(db)
+    assets = state.get("assets", [])
+    total_assets = len(assets)
+    critical_assets = sum(1 for a in assets if a.get("status") == "CRITICAL")
+    high_assets = sum(1 for a in assets if a.get("risk_score", 0) >= 60 and a.get("status") != "CRITICAL")
+    total_telemetry_count = db.query(TelemetryReading).count()
+    actions_count = db.query(Action).count()
+    completed_actions = db.query(Action).filter(Action.status == "COMPLETED").count()
+
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "total_assets": total_assets,
+        "critical_assets": critical_assets,
+        "high_risk_assets": high_assets,
+        "available_teams": state.get("available_teams_count", 3),
+        "total_teams": state.get("total_teams_count", 3),
+        "total_telemetry_readings": total_telemetry_count,
+        "total_actions": actions_count,
+        "completed_actions": completed_actions,
+        "buzzer_active": state.get("buzzer", False),
+        "buzzer_silenced": state.get("buzzer_silenced", False)
+    }
+
 
 
 if __name__ == "__main__":

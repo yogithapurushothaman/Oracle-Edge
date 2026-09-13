@@ -31,7 +31,7 @@ def run_tests():
     print(f"  Found {len(teams)} municipal response teams:")
     for t in teams:
         print(f"   - {t['team_id']}: {t['team_name']} ({t['hazard_domain']}) [{t['status']}]")
-    assert len(teams) >= 4, "Should have seeded 4 default teams"
+    assert len(teams) >= 3, "Should have seeded 3 default teams"
 
     # 2. Test Dynamic Node Registration (F09 Vandalur Reserve Forest - WILDFIRE)
     print("\n[TEST 2] Registering Wildfire Node F09...")

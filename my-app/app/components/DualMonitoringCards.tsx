@@ -26,10 +26,17 @@ interface DualMonitoringCardsProps {
   h01?: AssetMonitoringData;
   b17?: AssetMonitoringData;
   buzzerActive?: boolean;
+  buzzerSilenced?: boolean;
+  apiStatus?: { open_meteo?: string; sentinel_2?: string };
+  isDeviceOffline?: boolean;
 }
 
 export default function DualMonitoringCards({
   assets,
+  buzzerActive = false,
+  buzzerSilenced = false,
+  apiStatus,
+  isDeviceOffline = false,
   h01 = {
     asset_id: "H01",
     name: "Metro Hospital",
@@ -64,7 +71,6 @@ export default function DualMonitoringCards({
     led_safe: true,
     led_critical: false,
   },
-  buzzerActive = false,
 }: DualMonitoringCardsProps) {
   const cardAssets = assets && assets.length > 0 ? assets : [h01, b17];
 
@@ -151,6 +157,19 @@ export default function DualMonitoringCards({
               <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
             )}
 
+            {/* Watchdog Offline Cached State Overlay */}
+            {isDeviceOffline && (
+              <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[1.5px] rounded-2xl flex flex-col items-center justify-center pointer-events-none z-20 transition-all">
+                <div className="px-4 py-2 rounded-full bg-slate-900/95 border border-amber-500/60 shadow-2xl shadow-amber-950/70 flex items-center gap-2.5 text-amber-300 text-xs font-mono font-bold tracking-wide">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                  </span>
+                  <span>Cached state — awaiting hardware ping</span>
+                </div>
+              </div>
+            )}
+
             <div>
               {/* Card Header */}
               <div className="flex items-start justify-between pb-3.5 border-b border-slate-200 dark:border-slate-800">
@@ -181,6 +200,28 @@ export default function DualMonitoringCards({
                       <span className="font-semibold text-slate-700 dark:text-slate-300">
                         {asset.domain || "URBAN_INFRASTRUCTURE"}
                       </span>
+                      <span>•</span>
+                      {hazard === "WILDFIRE" ? (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                            apiStatus?.open_meteo === "LIVE"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          }`}
+                        >
+                          Meteo: {apiStatus?.open_meteo || "LIVE"}
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                            apiStatus?.sentinel_2 === "LIVE"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30"
+                          }`}
+                        >
+                          Sentinel-2: {apiStatus?.sentinel_2 || "FALLBACK"}
+                        </span>
+                      )}
                       <span>•</span>
                       <span className="font-mono text-cyan-600 dark:text-cyan-300 font-semibold">
                         Criticality: {(asset.criticality * 100).toFixed(0)}%
@@ -274,9 +315,9 @@ export default function DualMonitoringCards({
                   ) : (
                     <>
                       <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                        <span className="text-slate-500 dark:text-slate-400">Baseline Scale:</span>
+                        <span className="text-slate-500 dark:text-slate-400">Sentinel-2 Inundation:</span>
                         <span className="font-mono font-bold text-cyan-600 dark:text-cyan-300">
-                          0 - 28.0 cm
+                          {asset.satellite_ndwi_delta != null ? `+${(asset.satellite_ndwi_delta * 100).toFixed(0)}% NDWI Δ` : "+12% baseline"}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
@@ -329,6 +370,8 @@ export default function DualMonitoringCards({
                   className={`p-2 rounded-xl border flex flex-col items-center justify-center transition-all ${
                     buzzerActive
                       ? "bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-300 animate-pulse"
+                      : buzzerSilenced
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
                       : "bg-slate-100 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 opacity-50"
                   }`}
                 >
@@ -336,7 +379,7 @@ export default function DualMonitoringCards({
                     Siren / Buzzer
                   </span>
                   <span className="text-[9px] font-mono font-bold mt-0.5">
-                    {buzzerActive ? "2.4kHz ON" : "SILENT"}
+                    {buzzerActive ? "2.4kHz ON" : buzzerSilenced ? "SILENCED" : "SILENT"}
                   </span>
                 </div>
               </div>

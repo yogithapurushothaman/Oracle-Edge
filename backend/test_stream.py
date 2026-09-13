@@ -45,6 +45,10 @@ def test_dashboard_state_snapshot():
     assert "top_priority" in data
     assert "buzzer" in data
     assert "recommended_action" in data
+    assert "api_status" in data
+    assert "open_meteo" in data["api_status"]
+    assert "sentinel_2" in data["api_status"]
+    print(f"API Diagnostics: {data.get('api_status')}")
     assert len(data.get("assets", [])) >= 2
 
     # Check H01 and B17
@@ -116,6 +120,14 @@ def test_subscriber_broadcast():
 
 def test_live_stream(base_url="http://127.0.0.1:8000"):
     import requests
+    import pytest
+    try:
+        check = requests.get(f"{base_url}/api/v1/dashboard/state", timeout=1)
+        if check.status_code != 200:
+            pytest.skip(f"Live server at {base_url} returned non-200")
+    except Exception:
+        pytest.skip(f"Live server is not running on {base_url} (use --live when running against an active server)")
+
     print(f"\n{CYAN}{'='*65}{RESET}")
     print(f"{BOLD}{CYAN} TEST 3: LIVE HTTP SSE STREAM ({base_url}/api/v1/stream){RESET}")
     print(f"{CYAN}{'='*65}{RESET}")

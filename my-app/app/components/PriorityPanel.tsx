@@ -11,6 +11,11 @@ interface PriorityPanelProps {
   actionLevel?: "CRITICAL" | "MODERATE" | "SAFE";
   topPriority?: string;
   buzzer?: boolean;
+  buzzerSilenced?: boolean;
+  activeAction?: any;
+  availableTeams?: number;
+  onAssignAction?: (actionId: string, teamName?: string) => Promise<void>;
+  onCompleteAction?: (actionId: string) => Promise<void>;
 }
 
 export default function PriorityPanel({
@@ -19,20 +24,90 @@ export default function PriorityPanel({
   actionLevel = "SAFE",
   topPriority = "H01",
   buzzer = false,
+  buzzerSilenced = false,
+  activeAction,
+  availableTeams = 3,
+  onAssignAction,
+  onCompleteAction,
 }: PriorityPanelProps) {
   const [dispatchedTime, setDispatchedTime] = useState<string | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(899);
+  const [isDispatching, setIsDispatching] = useState<boolean>(false);
+
+  // Check whether currently dispatched
+  const isDispatched = buzzerSilenced || (activeAction && activeAction.status === "DISPATCHED") || !!dispatchedTime;
+  const assignedTeamName = activeAction?.assigned_team || "Team Alpha";
+
+  // Countdown timer for active dispatch
+  React.useEffect(() => {
+    if (!isDispatched) return;
+    const interval = setInterval(() => {
+      setCountdownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isDispatched]);
 
   // Sort assets by priority rank
   const sortedAssets = [...assets].sort((a, b) => a.priority_rank - b.priority_rank);
-  const isCritical = actionLevel === "CRITICAL" || buzzer;
+  const isCritical = actionLevel === "CRITICAL" || buzzer || (!buzzerSilenced && assets.some(a => a.status === "CRITICAL"));
 
-  const handleDispatch = () => {
+  const formatCountdown = (totalSec: number) => {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const [isResolving, setIsResolving] = useState<boolean>(false);
+
+  const handleDispatch = async () => {
     triggerHaptic([30, 20, 30]);
-    if (!dispatchedTime) {
-      const now = new Date();
-      setDispatchedTime(now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    setIsDispatching(true);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setDispatchedTime(timeStr);
+
+    const actionId = activeAction?.action_id || topPriority || "H01";
+    if (onAssignAction) {
+      try {
+        await onAssignAction(actionId, "Team Alpha");
+      } catch (err) {
+        console.error("Failed to assign action:", err);
+      } finally {
+        setIsDispatching(false);
+      }
     } else {
+      // Local fallback if no callback provided
+      try {
+        await fetch(`http://127.0.0.1:8000/api/v1/actions/${actionId}/assign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ team_name: "Team Alpha" }),
+        });
+      } catch (e) {
+        console.error("Direct assign error:", e);
+      } finally {
+        setIsDispatching(false);
+      }
+    }
+  };
+
+  const handleResolve = async () => {
+    triggerHaptic([40, 20, 40]);
+    setIsResolving(true);
+    const actionId = activeAction?.action_id || topPriority || "H01";
+    try {
+      if (onCompleteAction) {
+        await onCompleteAction(actionId);
+      } else {
+        await fetch(`http://127.0.0.1:8000/api/v1/actions/${actionId}/complete`, {
+          method: "POST",
+        });
+      }
       setDispatchedTime(null);
+    } catch (err) {
+      console.error("Failed to complete action:", err);
+    } finally {
+      setIsResolving(false);
     }
   };
 
@@ -50,7 +125,7 @@ export default function PriorityPanel({
                 Action & Priority Engine
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Infrastructure Triage & Resource Allocation
+                Infrastructure Triage & Closed-Loop Resource Dispatch
               </p>
             </div>
           </div>
@@ -103,10 +178,10 @@ export default function PriorityPanel({
                     {/* Location */}
                     <td className="py-3 px-3">
                       <div className="font-bold text-slate-900 dark:text-white text-xs leading-snug">
-                        {asset.asset_id === "H01" ? "H01 Metro Hospital" : asset.asset_id === "B17" ? "B17 Adyar Bridge" : `${asset.name} (${asset.asset_id})`}
+                        {asset.asset_id === "H01" ? "H01 Metro Hospital" : "B17 Adyar Bridge"}
                       </div>
                       <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                        {asset.type || asset.target_hazard} • {(asset.water_level_cm || 0).toFixed(1)} cm
+                        {asset.type} • {asset.water_level_cm.toFixed(1)} cm
                       </span>
                     </td>
 
@@ -116,7 +191,7 @@ export default function PriorityPanel({
                         className="inline-block font-mono font-bold text-xs px-2 py-0.5 rounded-full"
                         style={{
                           backgroundColor: isCrit ? "rgba(244, 63, 94, 0.15)" : isMod ? "rgba(251, 191, 36, 0.15)" : "rgba(16, 185, 129, 0.15)",
-                          color: isCrit ? "#f43f5e" : isMod ? "#d97706" : "#059669",
+                          color: isCrit ? "#f43f5e" : isMod ? "#d97706" : "#10b981",
                           border: `1px solid ${isCrit ? "rgba(244, 63, 94, 0.3)" : isMod ? "rgba(251, 191, 36, 0.3)" : "rgba(16, 185, 129, 0.3)"}`
                         }}
                       >
@@ -125,7 +200,7 @@ export default function PriorityPanel({
                     </td>
 
                     {/* Impact */}
-                    <td className="py-3 px-3 text-center whitespace-nowrap text-[11px] text-slate-700 dark:text-slate-300 font-semibold">
+                    <td className="py-3 px-3 text-center whitespace-nowrap text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
                       {impactText}
                     </td>
 
@@ -136,8 +211,8 @@ export default function PriorityPanel({
                           isCrit
                             ? "bg-rose-600 text-white shadow-sm shadow-rose-600/40 animate-pulse"
                             : isMod
-                            ? "bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40"
-                            : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/40"
+                            ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40"
+                            : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40"
                         }`}
                       >
                         {statusLabel}
@@ -167,74 +242,112 @@ export default function PriorityPanel({
         </div>
       </div>
 
-      {/* Large Operational Action Banner */}
+      {/* Large Operational Action Banner with Closed-Loop Silence State */}
       <div className="mt-4">
         <div
-          onMouseEnter={() => { if (isCritical) triggerHaptic([30, 20, 30]); }}
+          onMouseEnter={() => { if (isCritical && !isDispatched) triggerHaptic([30, 20, 30]); }}
           className={`p-4 rounded-xl border transition-all duration-300 ${
-            isCritical
-              ? "bg-gradient-to-r from-rose-900/90 to-red-900/80 dark:from-rose-950/90 dark:to-red-950/80 border-rose-500 shadow-xl shadow-rose-500/20 animate-pulse hover:border-rose-400"
-              : "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-950/70 dark:to-teal-950/60 border-emerald-500/40 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10"
+            isCritical && !isDispatched
+              ? "bg-gradient-to-r from-rose-900/90 to-red-900/80 dark:from-rose-950/90 dark:to-red-950/80 border-2 border-rose-500 shadow-xl shadow-rose-500/30 animate-pulse hover:border-rose-400"
+              : isDispatched
+              ? "bg-gradient-to-r from-slate-900/90 via-emerald-950/40 to-slate-900/90 border border-emerald-500/60 shadow-lg shadow-emerald-500/20"
+              : "bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-950/70 dark:to-teal-950/60 border border-emerald-500/40 dark:border-emerald-500/50 shadow-md shadow-emerald-500/10"
           }`}
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div
                 className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  isCritical
+                  isCritical && !isDispatched
                     ? "bg-rose-600 text-white shadow-md shadow-rose-600/50 animate-tactical-vibrate"
+                    : isDispatched
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/40"
                     : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                 }`}
               >
-                {isCritical ? <SirenIcon className="w-5 h-5 animate-tactical-vibrate text-white" /> : <CheckCircle2Icon className="w-5 h-5" />}
+                {isCritical && !isDispatched ? (
+                  <SirenIcon className="w-5 h-5 animate-tactical-vibrate text-white" />
+                ) : (
+                  <CheckCircle2Icon className="w-5 h-5 text-white" />
+                )}
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded ${
-                    isCritical ? "bg-rose-950 text-rose-200 border border-rose-400/60" : "bg-emerald-900 text-emerald-300 border border-emerald-600"
+                    isCritical && !isDispatched
+                      ? "bg-rose-950 text-rose-200 border border-rose-400/60"
+                      : isDispatched
+                      ? "bg-emerald-950 text-emerald-200 border border-emerald-500/60"
+                      : "bg-emerald-900 text-emerald-300 border border-emerald-600"
                   }`}>
-                    {isCritical ? "RECOMMENDED ACTION" : "DIRECTIVE"}
+                    {isDispatched ? "UNIT EN ROUTE" : isCritical ? "RECOMMENDED ACTION" : "DIRECTIVE"}
                   </span>
-                  {buzzer && (
+
+                  {/* Hardware Buzzer Live Status Badge */}
+                  {buzzer && !isDispatched ? (
                     <span
                       onMouseEnter={() => triggerHaptic([30, 20, 30])}
-                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse cursor-pointer hover:animate-tactical-vibrate"
+                      className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/30 text-rose-200 border border-rose-400/60 animate-pulse cursor-pointer hover:animate-tactical-vibrate flex items-center gap-1"
                     >
-                      🔊 BUZZER ACTIVE
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+                      🔊 BUZZER ACTIVE (2.4kHz)
                     </span>
-                  )}
+                  ) : isDispatched ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      🔇 Buzzer Silenced (On Scene)
+                    </span>
+                  ) : null}
                 </div>
+
                 <h4 className={`text-xs sm:text-sm font-bold mt-1 leading-snug ${isCritical ? "text-white" : "text-slate-900 dark:text-white"}`}>
-                  {isCritical
+                  {isDispatched
+                    ? `${assignedTeamName} Dispatched to ${topPriority === "B17" ? "Bridge B17" : "Hospital H01"}`
+                    : isCritical
                     ? "Dispatch Flood Barriers & Emergency Crew to H01 Hospital"
                     : recommendedAction}
                 </h4>
               </div>
             </div>
 
-            {/* Interactive Acknowledge & Dispatch Button */}
-            <button
-              onClick={handleDispatch}
-              className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shrink-0 cursor-pointer active:scale-95 ${
-                dispatchedTime
-                  ? "bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400 shadow-emerald-600/40 hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]"
-                  : isCritical
-                  ? "bg-white hover:bg-slate-100 text-rose-700 border border-rose-300 shadow-rose-900/50 hover:shadow-[0_0_25px_rgba(244,63,94,0.4)] hover:scale-105 hover:animate-tactical-vibrate"
-                  : "bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white dark:text-slate-200 border border-slate-700 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-              }`}
-            >
-              {dispatchedTime ? (
-                <>
-                  <CheckIcon className="w-4 h-4 text-white" />
-                  <span>Dispatched ({dispatchedTime})</span>
-                </>
-              ) : (
-                <>
-                  <SendIcon className="w-3.5 h-3.5" />
-                  <span>Acknowledge & Dispatch Team Alpha</span>
-                </>
+            {/* Interactive Acknowledge & Dispatch Button with Live Response Timer & Release Unit */}
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+              <button
+                onClick={handleDispatch}
+                disabled={isDispatching || isDispatched}
+                className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shrink-0 ${
+                  isDispatched
+                    ? "bg-emerald-600/90 text-white border border-emerald-400 shadow-emerald-600/40 cursor-default"
+                    : isCritical
+                    ? "bg-white hover:bg-slate-100 text-rose-700 border border-rose-300 shadow-rose-900/50 hover:shadow-[0_0_25px_rgba(244,63,94,0.4)] hover:scale-105 hover:animate-tactical-vibrate cursor-pointer active:scale-95"
+                    : "bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-white dark:text-slate-200 border border-slate-700 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)] cursor-pointer active:scale-95"
+                }`}
+              >
+                {isDispatched ? (
+                  <>
+                    <CheckIcon className="w-4 h-4 text-white" />
+                    <span>✓ {assignedTeamName} Dispatched ({formatCountdown(countdownSeconds)})</span>
+                  </>
+                ) : (
+                  <>
+                    <SendIcon className="w-3.5 h-3.5" />
+                    <span>Acknowledge & Dispatch Team</span>
+                  </>
+                )}
+              </button>
+
+              {isDispatched && (
+                <button
+                  onClick={handleResolve}
+                  disabled={isResolving}
+                  className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-900 hover:bg-emerald-700 dark:bg-slate-800 dark:hover:bg-emerald-600 text-white border border-slate-700 hover:border-emerald-400 transition-all duration-200 flex items-center justify-center gap-1.5 shadow-md active:scale-95 cursor-pointer shrink-0"
+                  title="Conclude incident and release municipal unit"
+                >
+                  <CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isResolving ? "Releasing..." : "Release Team"}</span>
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </div>
       </div>

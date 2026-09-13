@@ -5,10 +5,13 @@ and SHAP-style contributing factor breakdowns per PRD Section 8.1, 8.3 & 14.
 """
 
 import os
+import sys
 import pickle
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, List, Optional
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from ml.dataset import FEATURE_COLUMNS
 
 class RiskInferenceEngine:

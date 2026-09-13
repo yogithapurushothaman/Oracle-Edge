@@ -1,7 +1,11 @@
 """
-ORACLE Edge - Step 3: Live Weather Client
+ORACLE Edge - Step 3: Live Weather Client & Resilient Circuit Breaker
 Fetches real-time precipitation and short-term forecasts from Open-Meteo API.
-Includes 15-minute in-memory caching per coordinate pair.
+Includes:
+- Strict 2.0-second asynchronous and synchronous timeouts (httpx.Timeout(2.0, connect=2.0))
+- In-memory cache storing last successful rainfall metrics per coordinate pair
+- Resilient circuit breaker: serves cached or nominal fallback data on timeout/error
+- Health diagnostic status tracking: 'LIVE' vs 'FALLBACK'
 """
 
 import time
@@ -16,18 +20,33 @@ CACHE_TTL_SECONDS = 15 * 60  # 15 minutes cache per asset coordinates
 
 class WeatherService:
     """
-    Asynchronous Open-Meteo Weather Service with in-memory TTL caching.
+    Open-Meteo Weather Service with strict 2.0s timeout and circuit breaker fallback.
     Computes:
     - rainfall_1h (mm)
     - rainfall_3h (rolling sum in mm)
     - rainfall_24h (rolling sum in mm)
     - forecast_heavy_rain (bool: True if next 3 hours show > 10mm/h)
+    - api_status: "LIVE" | "FALLBACK"
     """
 
-    def __init__(self, timeout: float = 8.0):
-        self.timeout = timeout
-        # Cache keyed by (round(lat, 4), round(lon, 4)) -> {"timestamp": float, "data": dict}
+    def __init__(self, timeout: float = 2.0):
+        # Strict 2.0s connect and read timeout per PRD specifications
+        self.timeout = httpx.Timeout(timeout, connect=timeout)
+        self.timeout_seconds = timeout
+        
+        # Fresh TTL cache keyed by (round(lat, 4), round(lon, 4))
         self._cache: Dict[Tuple[float, float], Dict[str, Any]] = {}
+        
+        # Last successful metrics cache per coordinate pair (survives TTL expiry on API outages)
+        self._last_successful_cache: Dict[Tuple[float, float], Dict[str, Any]] = {}
+        self._global_last_successful: Optional[Dict[str, Any]] = None
+        
+        # Service status: "LIVE" or "FALLBACK"
+        self._status: str = "LIVE"
+
+    def get_status(self) -> str:
+        """Returns the current operational status of the Open-Meteo service ('LIVE' | 'FALLBACK')."""
+        return self._status
 
     def _get_cache_key(self, latitude: float, longitude: float) -> Tuple[float, float]:
         return (round(float(latitude), 4), round(float(longitude), 4))
@@ -42,21 +61,41 @@ class WeatherService:
                 cached_data = dict(entry["data"])
                 cached_data["cached"] = True
                 cached_data["cache_age_sec"] = round(age, 1)
+                cached_data["api_status"] = self._status
                 return cached_data
         return None
 
     def set_cache(self, latitude: float, longitude: float, data: Dict[str, Any]):
-        """Stores weather data in memory cache."""
+        """Stores weather data in memory cache and records last successful metrics."""
         key = self._get_cache_key(latitude, longitude)
         self._cache[key] = {
             "timestamp": time.time(),
             "data": data
         }
+        # Persist as last known successful metrics
+        successful_metrics = {
+            "rainfall_1h": data.get("rainfall_1h", 4.2),
+            "rainfall_3h": data.get("rainfall_3h", 14.8),
+            "rainfall_24h": data.get("rainfall_24h", 28.5),
+            "temperature_c": data.get("temperature_c", 33.0),
+            "humidity_pct": data.get("humidity_pct", 55.0),
+            "wind_speed_kmh": data.get("wind_speed_kmh", 14.0),
+            "forecast_heavy_rain": data.get("forecast_heavy_rain", False),
+            "forecast_max_hourly": data.get("forecast_max_hourly", 0.0),
+            "source": "Open-Meteo (Cached)",
+            "api_status": "FALLBACK",
+            "cached": True,
+            "fallback": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        self._last_successful_cache[key] = successful_metrics
+        self._global_last_successful = successful_metrics
 
     async def fetch_weather_async(self, latitude: float, longitude: float) -> Dict[str, Any]:
         """
-        Asynchronously queries the free Open-Meteo Forecast API.
-        Falls back gracefully to cached or baseline nominal values on failure.
+        Asynchronously queries the Open-Meteo Forecast API with a strict 2.0s timeout.
+        Falls back to last successful cache or nominal defaults on timeout/connection error.
+        Never delays or crashes the calling telemetry ingestion loop.
         """
         cached = self.get_cached(latitude, longitude)
         if cached:
@@ -77,37 +116,80 @@ class WeatherService:
                     payload = response.json()
                     computed = self._parse_open_meteo_payload(payload, latitude, longitude)
                     self.set_cache(latitude, longitude, computed)
+                    self._status = "LIVE"
                     computed["cached"] = False
                     computed["cache_age_sec"] = 0.0
+                    computed["api_status"] = "LIVE"
                     return computed
                 else:
-                    print(f"[WARN] Open-Meteo API returned status {response.status_code}. Using fallback.")
-        except Exception as e:
-            print(f"[WARN] Open-Meteo API query error for ({latitude}, {longitude}): {e}. Using fallback.")
+                    print("[Weather Service] External API timeout. Serving cached/nominal fallback data.")
+                    self._status = "FALLBACK"
+        except (httpx.TimeoutException, httpx.ConnectError, Exception):
+            print("[Weather Service] External API timeout. Serving cached/nominal fallback data.")
+            self._status = "FALLBACK"
 
-        # Fallback to expired cache if available, else nominal defaults
+        return self._serve_fallback_or_cached(latitude, longitude)
+
+    def fetch_weather_sync(self, latitude: float, longitude: float) -> Dict[str, Any]:
+        """
+        Synchronous Open-Meteo query with strict 2.0s timeout.
+        Uses synchronous httpx.Client to prevent event-loop conflicts.
+        """
+        cached = self.get_cached(latitude, longitude)
+        if cached:
+            return cached
+
+        url = (
+            f"{OPEN_METEO_BASE_URL}?"
+            f"latitude={latitude}&longitude={longitude}&"
+            f"hourly=precipitation,rain&"
+            f"current=precipitation,temperature_2m,relative_humidity_2m,wind_speed_10m&"
+            f"timezone=auto"
+        )
+
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.get(url)
+                if response.status_code == 200:
+                    payload = response.json()
+                    computed = self._parse_open_meteo_payload(payload, latitude, longitude)
+                    self.set_cache(latitude, longitude, computed)
+                    self._status = "LIVE"
+                    computed["cached"] = False
+                    computed["cache_age_sec"] = 0.0
+                    computed["api_status"] = "LIVE"
+                    return computed
+                else:
+                    print("[Weather Service] External API timeout. Serving cached/nominal fallback data.")
+                    self._status = "FALLBACK"
+        except (httpx.TimeoutException, httpx.ConnectError, Exception):
+            print("[Weather Service] External API timeout. Serving cached/nominal fallback data.")
+            self._status = "FALLBACK"
+
+        return self._serve_fallback_or_cached(latitude, longitude)
+
+    def _serve_fallback_or_cached(self, latitude: float, longitude: float) -> Dict[str, Any]:
+        """Returns last known successful metrics for coordinate pair if available, else nominal defaults."""
         key = self._get_cache_key(latitude, longitude)
-        if key in self._cache:
-            stale = dict(self._cache[key]["data"])
+        if key in self._last_successful_cache:
+            stale = dict(self._last_successful_cache[key])
             stale["cached"] = True
-            stale["stale"] = True
+            stale["fallback"] = True
+            stale["api_status"] = "FALLBACK"
+            stale["latitude"] = latitude
+            stale["longitude"] = longitude
+            return stale
+
+        if self._global_last_successful:
+            stale = dict(self._global_last_successful)
+            stale["cached"] = True
+            stale["fallback"] = True
+            stale["api_status"] = "FALLBACK"
+            stale["latitude"] = latitude
+            stale["longitude"] = longitude
             return stale
 
         return self._nominal_fallback(latitude, longitude)
-
-    def fetch_weather_sync(self, latitude: float, longitude: float) -> Dict[str, Any]:
-        """Synchronous wrapper for fetch_weather_async."""
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If inside an existing async event loop, run directly in executor or task
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    return pool.submit(asyncio.run, self.fetch_weather_async(latitude, longitude)).result()
-            else:
-                return loop.run_until_complete(self.fetch_weather_async(latitude, longitude))
-        except Exception:
-            return asyncio.run(self.fetch_weather_async(latitude, longitude))
 
     def _parse_open_meteo_payload(self, payload: Dict[str, Any], lat: float, lon: float) -> Dict[str, Any]:
         """Extracts and computes temperature, humidity, wind speed, and rainfall rolling sums."""
@@ -152,6 +234,7 @@ class WeatherService:
 
         return {
             "source": "Open-Meteo",
+            "api_status": "LIVE",
             "latitude": lat,
             "longitude": lon,
             "temperature_c": round(temperature_c, 1),
@@ -167,20 +250,21 @@ class WeatherService:
         }
 
     def _nominal_fallback(self, lat: float, lon: float) -> Dict[str, Any]:
-        """Nominal default weather conditions when API is offline."""
+        """Nominal default weather conditions when API is offline (PRD specifications)."""
         return {
             "source": "Nominal-Fallback",
+            "api_status": "FALLBACK",
             "latitude": lat,
             "longitude": lon,
             "temperature_c": 33.0,
             "humidity_pct": 55.0,
             "wind_speed_kmh": 14.0,
             "current_precipitation": 0.0,
-            "rainfall_1h": 0.0,
-            "rainfall_3h": 0.0,
-            "rainfall_24h": 0.0,
+            "rainfall_1h": 4.2,
+            "rainfall_3h": 14.8,
+            "rainfall_24h": 28.5,
             "forecast_heavy_rain": False,
-            "forecast_max_hourly": 0.0,
+            "forecast_max_hourly": 1.2,
             "timestamp": datetime.utcnow().isoformat(),
             "cached": False,
             "fallback": True
@@ -188,4 +272,4 @@ class WeatherService:
 
 
 # Global singleton instance
-weather_service = WeatherService()
+weather_service = WeatherService(timeout=2.0)
