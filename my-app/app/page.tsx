@@ -11,6 +11,13 @@ import CursorGlow, { triggerHaptic } from "./components/CursorGlow";
 import ShapExplainabilityPanel from "./components/ShapExplainabilityPanel";
 import TelemetryRiskTrendChart, { TelemetryPoint } from "./components/TelemetryRiskTrendChart";
 import { useTheme } from "./context/ThemeContext";
+import IncidentReportModal from "./components/IncidentReportModal";
+import {
+  playCriticalAlert,
+  getAudioMuted,
+  setAudioMuted,
+  initAudioContext,
+} from "./utils/audioAlert";
 import {
   ShieldIcon,
   CpuIcon,
@@ -24,6 +31,9 @@ import {
   BarChart3Icon,
   SunIcon,
   MoonIcon,
+  Volume2Icon,
+  VolumeXIcon,
+  FileTextIcon,
 } from "./components/Icons";
 import { AssetMonitoringData, ActionItem, TeamItem, DeviceStatus } from "./types";
 
@@ -89,6 +99,28 @@ export default function OracleCommandCenter() {
   const [isTransmitting, setIsTransmitting] = useState<boolean>(false);
   const [activeStep, setActiveStep] = useState<1 | 2 | 3>(3);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsAudioMuted(getAudioMuted());
+
+    const handleMuteChange = (e: any) => {
+      if (typeof e.detail?.muted === "boolean") {
+        setIsAudioMuted(e.detail.muted);
+      }
+    };
+    window.addEventListener("oracle-audio-mute-change", handleMuteChange);
+    return () => window.removeEventListener("oracle-audio-mute-change", handleMuteChange);
+  }, []);
+
+  const handleToggleAudio = () => {
+    initAudioContext();
+    triggerHaptic([20]);
+    const nextMuted = !isAudioMuted;
+    setIsAudioMuted(nextMuted);
+    setAudioMuted(nextMuted);
+  };
 
   // Live Dashboard State
   const [assets, setAssets] = useState<AssetMonitoringData[]>(DEFAULT_ASSETS);
@@ -140,6 +172,7 @@ export default function OracleCommandCenter() {
       const isNowCritical = data.assets.some((a: any) => a.status === "CRITICAL") || data.buzzer === true;
       if (!prevCriticalRef.current && isNowCritical) {
         triggerHaptic([30, 20, 30]);
+        playCriticalAlert();
       }
       prevCriticalRef.current = isNowCritical;
 
@@ -277,18 +310,64 @@ export default function OracleCommandCenter() {
     let readings: any[] = [];
     if (step === 1) {
       // Step 1: Safe baseline
+      prevCriticalRef.current = false;
+      setBuzzer(false);
+      setActionLevel("SAFE");
+      setAssets((prev) =>
+        prev.map((a) => ({
+          ...a,
+          status: "SAFE",
+          water_level_cm: a.asset_id === "H01" ? 6.2 : 5.8,
+          rise_rate_cm_min: 0.1,
+          risk_score: 24.0,
+          led_safe: true,
+          led_critical: false,
+        }))
+      );
       readings = [
         { sensor_id: "SNS-H01", asset_id: "H01", water_level_cm: 6.2, rise_rate_cm_min: 0.1 },
         { sensor_id: "SNS-B17", asset_id: "B17", water_level_cm: 5.8, rise_rate_cm_min: 0.1 },
       ];
     } else if (step === 2) {
       // Step 2: Rising elevated water
+      prevCriticalRef.current = false;
+      setBuzzer(false);
+      setActionLevel("MODERATE");
+      setAssets((prev) =>
+        prev.map((a) => ({
+          ...a,
+          status: "MODERATE",
+          water_level_cm: a.asset_id === "H01" ? 15.4 : 16.0,
+          rise_rate_cm_min: 0.8,
+          risk_score: 65.0,
+          led_safe: false,
+          led_critical: false,
+        }))
+      );
       readings = [
         { sensor_id: "SNS-H01", asset_id: "H01", water_level_cm: 15.4, rise_rate_cm_min: 0.8 },
         { sensor_id: "SNS-B17", asset_id: "B17", water_level_cm: 16.0, rise_rate_cm_min: 0.6 },
       ];
     } else {
       // Step 3: Critical (72cm full-scale / 21.5cm tabletop danger)
+      const wasNotCritical = !prevCriticalRef.current;
+      prevCriticalRef.current = true;
+      setBuzzer(true);
+      setActionLevel("CRITICAL");
+      setAssets((prev) =>
+        prev.map((a) => ({
+          ...a,
+          status: a.asset_id === "H01" ? "CRITICAL" : "MODERATE",
+          water_level_cm: a.asset_id === "H01" ? 21.5 : 18.5,
+          rise_rate_cm_min: a.asset_id === "H01" ? 1.8 : 1.2,
+          risk_score: a.asset_id === "H01" ? 92.0 : 76.0,
+          led_safe: false,
+          led_critical: a.asset_id === "H01",
+        }))
+      );
+      if (wasNotCritical) {
+        playCriticalAlert();
+      }
       readings = [
         { sensor_id: "SNS-H01", asset_id: "H01", water_level_cm: 21.5, rise_rate_cm_min: 1.8 },
         { sensor_id: "SNS-B17", asset_id: "B17", water_level_cm: 18.5, rise_rate_cm_min: 1.2 },
@@ -316,6 +395,7 @@ export default function OracleCommandCenter() {
       setTimeout(() => setIsTransmitting(false), 300);
     }
   };
+
 
   // Dispatch Team Action Handler
   const handleAssignTeam = async (actionId: string, teamIdOrName?: string) => {
@@ -377,6 +457,16 @@ export default function OracleCommandCenter() {
         onClose={() => setIsRegisterModalOpen(false)}
         onRegisterSuccess={handleRegisterSuccess}
         apiBaseUrl={API_BASE_URL}
+      />
+
+      {/* Official Incident Dispatch Report Modal */}
+      <IncidentReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        selectedAsset={currentSelectedAsset}
+        actions={actions}
+        teams={teams}
+        apiStatus={apiStatus}
       />
 
       {/* Left Navigation Bar */}
@@ -517,8 +607,22 @@ export default function OracleCommandCenter() {
             </div>
           </div>
 
-          {/* Action Controls: Theme Toggle + Register Node + Evaluator Demo Bar */}
+          {/* Action Controls: Audio Toggle + Theme Toggle + Export Report + Register Node + Evaluator Demo Bar */}
           <div className="flex items-center gap-2">
+            {/* Quick Audio Mute / Unmute Toggle Button */}
+            <button
+              onClick={handleToggleAudio}
+              title={isAudioMuted ? "Unmute Audio Warning Chimes" : "Mute Audio Warning Chimes"}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-900/90 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center transition-all cursor-pointer active:scale-95"
+              aria-label={isAudioMuted ? "Unmute Audio Warnings" : "Mute Audio Warnings"}
+            >
+              {isAudioMuted ? (
+                <VolumeXIcon className="w-4 h-4 text-rose-500 hover:scale-110 transition-transform" />
+              ) : (
+                <Volume2Icon className="w-4 h-4 text-emerald-500 hover:scale-110 transition-transform" />
+              )}
+            </button>
+
             {/* Theme Toggle Button */}
             <button
               onClick={() => {
@@ -534,6 +638,19 @@ export default function OracleCommandCenter() {
               ) : (
                 <MoonIcon className="w-4 h-4 text-indigo-600 hover:-rotate-12 transition-transform duration-300" />
               )}
+            </button>
+
+            {/* "Export Incident Report" Button */}
+            <button
+              onClick={() => {
+                triggerHaptic([20]);
+                setIsReportModalOpen(true);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-800/90 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 border border-slate-700 hover:border-cyan-500/50"
+              title="Export Printable Municipal Incident Dispatch Report"
+            >
+              <FileTextIcon className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Export Incident Report</span>
             </button>
 
             {/* "+ Register New Node" Button */}
@@ -784,6 +901,7 @@ export default function OracleCommandCenter() {
               teams={teams}
               onAssignTeam={handleAssignTeam}
               onCompleteAction={handleCompleteAction}
+              onExportReport={() => setIsReportModalOpen(true)}
             />
           )}
 

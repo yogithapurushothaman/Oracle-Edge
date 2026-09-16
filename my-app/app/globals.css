@@ -181,3 +181,56 @@ body {
   background: transparent;
   border: none;
 }
+
+/* =========================================================
+   Print Stylesheet for Official Incident Dispatch Records
+   ========================================================= */
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide all dashboard interactive chrome & cursor glow */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Make only the report printable container visible */
+  #oracle-incident-report-printable,
+  #oracle-incident-report-printable * {
+    visibility: visible;
+  }
+
+  #oracle-incident-report-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    z-index: 999999 !important;
+  }
+
+  /* Hide action controls and close buttons marked .no-print */
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  @page {
+    margin: 1.2cm;
+    size: portrait;
+  }
+}
+

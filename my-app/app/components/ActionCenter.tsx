@@ -11,6 +11,7 @@ import {
   UsersIcon,
   ShieldIcon,
   ActivityIcon,
+  FileTextIcon,
 } from "./Icons";
 import { triggerHaptic } from "./CursorGlow";
 
@@ -19,6 +20,7 @@ interface ActionCenterProps {
   teams: TeamItem[];
   onAssignTeam: (actionId: string, teamId: string) => Promise<void>;
   onCompleteAction: (actionId: string) => Promise<void>;
+  onExportReport?: () => void;
 }
 
 export default function ActionCenter({
@@ -26,6 +28,7 @@ export default function ActionCenter({
   teams = [],
   onAssignTeam,
   onCompleteAction,
+  onExportReport,
 }: ActionCenterProps) {
   const [selectedTeams, setSelectedTeams] = useState<Record<string, string>>({});
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
@@ -227,9 +230,23 @@ export default function ActionCenter({
               </p>
             </div>
           </div>
-          <span className="text-xs font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-lg border border-cyan-500/30">
-            Real-Time Synchronization Active
-          </span>
+          <div className="flex items-center gap-2">
+            {onExportReport && (
+              <button
+                onClick={() => {
+                  triggerHaptic([20]);
+                  onExportReport();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-600/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 border border-cyan-400/40"
+              >
+                <FileTextIcon className="w-3.5 h-3.5" />
+                <span>Export Incident Report</span>
+              </button>
+            )}
+            <span className="hidden sm:inline text-xs font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-lg border border-cyan-500/30">
+              Real-Time Synchronization Active
+            </span>
+          </div>
         </div>
 
         <div className="divide-y divide-slate-200 dark:divide-slate-800/80">
