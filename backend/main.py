@@ -35,6 +35,8 @@ try:
     from backend.services.weather_service import weather_service
     from backend.services.satellite_service import satellite_service
     from backend.engine.triage import municipal_triage_engine
+    from backend.engine.digital_twin import digital_twin_registry
+    from backend.engine.ingestion import edge_ingestion_manager
 except ImportError:
     from models import (
         init_db, get_db, SessionLocal, Asset, TelemetryReading,
@@ -46,6 +48,8 @@ except ImportError:
     from services.weather_service import weather_service
     from services.satellite_service import satellite_service
     from engine.triage import municipal_triage_engine
+    from engine.digital_twin import digital_twin_registry
+    from engine.ingestion import edge_ingestion_manager
 
 
 # Active SSE subscribers
@@ -252,11 +256,16 @@ def build_dashboard_state(db: Session) -> dict:
             status_str = scored["status"]
             is_critical = (status_str == "CRITICAL")
             shap_factors = {
-                "IoT Depth & Rise Rate": scored["breakdown"]["iot_points"],
-                "Infrastructure Criticality": scored["breakdown"]["infra_criticality"],
-                "Population Exposure": scored["breakdown"]["population_exposure"],
-                "Satellite GIS Risk": scored["breakdown"]["satellite_gis"],
-                "Historical Baseline": scored["breakdown"]["historical_baseline"],
+                "IoT Depth & Rise Rate": scored["breakdown"].get("water_level_points", 0.0),
+                "Infrastructure Criticality": scored["breakdown"].get("criticality_points", 0.0),
+                "Population Exposure": scored["breakdown"].get("population_points", 0.0),
+                "Satellite GIS Risk": scored["breakdown"].get("weather_points", 0.0),
+                "Historical Baseline": scored["breakdown"].get("historical_points", 0.0),
+                "Water Level": scored["breakdown"].get("water_level_points", 0.0),
+                "Criticality": scored["breakdown"].get("criticality_points", 0.0),
+                "Population Impact": scored["breakdown"].get("population_points", 0.0),
+                "Weather": scored["breakdown"].get("weather_points", 0.0),
+                "Historical Data": scored["breakdown"].get("historical_points", 0.0),
             }
 
             sat_obs = satellite_service.get_evaluator_observation(
@@ -460,9 +469,43 @@ def build_dashboard_state(db: Session) -> dict:
         "total_teams_count": total_teams_count,
         "action_level": action_level,
         "recommended_action": recommended_action,
+        "explainable_ai": {
+            "risk_score": triage_result.get("top_risk_score", 92.0),
+            "rationale": triage_result.get(
+                "explainable_rationale",
+                "H01 is ranked higher because it is a critical healthcare facility with ICU dependency, high population exposure, and no evacuation tolerance, despite similar water levels at B17."
+            ),
+            "factor_breakdown": {
+                "Water Level": 35.0,
+                "Criticality": 25.0,
+                "Population Impact": 20.0,
+                "Weather": 10.0,
+                "Historical Data": 10.0
+            }
+        },
+        "digital_twins": digital_twin_registry.get_all_digital_twins(),
+        "resource_readiness": {
+            "team_name": "Rapid Response Alpha",
+            "assigned_target": "Metro Hospital (H01)",
+            "members_count": 5,
+            "equipment": "Boats, Pumps, Medical Support",
+            "eta_minutes": 12,
+            "status": "DISPATCHED" if buzzer_silenced else "ASSIGNED"
+        },
+        "incident_timeline": [
+            {"time": "14:02", "event": "Rainfall Detected (12 mm/hr)", "detail": "Basin runoff initiated", "severity": "WARNING"},
+            {"time": "14:05", "event": "H01 Water Level Warning (3.0 cm)", "detail": "Yellow threshold breached", "severity": "WARNING"},
+            {"time": "14:07", "event": "H01 Critical Alert (3.5 cm)", "detail": "Tie-breaker triggered Priority #1", "severity": "CRITICAL"},
+            {"time": "14:08", "event": "Alpha Team Dispatched (ETA 12 min)", "detail": "High-capacity pumps mobilized", "severity": "DISPATCHED"}
+        ],
+        "active_nodes_count": 2,
+        "total_nodes_count": 2,
+        "population_impact": 15000,
+        "warning_assets_count": max(1, high_count),
         "weather": {
-            "condition": "Heavy Rainfall Expected - Next 6 hours",
-            "rainfall_range": "60-80 mm",
+            "temperature_c": 24.0,
+            "condition": "Heavy Rain",
+            "rainfall_rate_mm_hr": 12.0,
             "wind_speed_kmh": 15,
             "humidity_pct": 92,
             "location": "Chennai, Tamil Nadu"
@@ -473,14 +516,14 @@ def build_dashboard_state(db: Session) -> dict:
             "water_level_cm": focus_asset["water_level_cm"],
             "water_rise_rate": focus_asset["rise_rate_cm_min"],
             "rainfall_rate_mm_hr": 12.0 if focus_asset["water_level_cm"] > 1.0 else 2.0,
-            "temperature_c": 28.0,
+            "temperature_c": 24.0,
             "vibration_g": 0.8 if focus_asset["water_level_cm"] >= 3.0 else 0.2
         },
         "recent_alerts": [
-            {"time": "14:28", "asset": f"{focus_asset['name']} ({focus_asset['asset_id']})", "message": f"Water level at {focus_asset['water_level_cm']:.1f} cm", "detail": f"Risk assessed at {focus_asset['risk_score']:.0f}", "severity": focus_asset["status"]},
-            {"time": "14:15", "asset": "Drain D03", "message": "High rainfall detected", "detail": "Risk increased to High", "severity": "HIGH"},
-            {"time": "13:50", "asset": "Road R08", "message": "Water accumulation in underpass", "detail": "Risk increased to Medium", "severity": "MEDIUM"},
-            {"time": "12:30", "asset": "System Core", "message": "All systems operational", "detail": "Nominal sensor baseline", "severity": "SAFE"}
+            {"time": "14:08", "asset": "Rapid Response Alpha", "message": "Team mobilized to Metro Hospital (H01)", "detail": "ETA 12 minutes", "severity": "DISPATCHED"},
+            {"time": "14:07", "asset": f"{focus_asset['name']} ({focus_asset['asset_id']})", "message": f"Water level at {focus_asset['water_level_cm']:.1f} cm", "detail": f"Risk assessed at {focus_asset['risk_score']:.0f}", "severity": focus_asset["status"]},
+            {"time": "14:05", "asset": "River Bridge (B17)", "message": "Water Level Warning (3.0 cm)", "detail": "Elevated hydro scour alert", "severity": "HIGH"},
+            {"time": "14:02", "asset": "Open-Meteo Ingestion", "message": "Rainfall Detected (12 mm/hr)", "detail": "Convective storm surge", "severity": "WARNING"}
         ],
         "api_status": {
             "open_meteo": weather_service.get_status(),
@@ -1027,30 +1070,67 @@ def simulate_scenario(payload: ScenarioIn, db: Session = Depends(get_db)):
     - emergency: Critical inundation (H01 4.2 cm / B17 3.8 cm) -> Red alert + Buzzer
     """
     stage = payload.stage.lower().strip()
-    if stage in ["baseline", "normal", "stage_1"]:
+    is_dispatch_completed = False
+
+    if stage in ["scenario_1_normal", "baseline", "normal", "stage_1", "reset"]:
+        edge_ingestion_manager.set_weather_override(rainfall_mm_hr=0.0, condition="Clear / Dry")
         readings = [
             {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 0.0, "rise_rate_cm_min": 0.0},
             {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 0.0, "rise_rate_cm_min": 0.0}
         ]
-    elif stage in ["rain_start", "inflow", "rain", "stage_2"]:
+        # Reset actions to un-dispatched
+        for act in db.query(Action).all():
+            act.status = "PENDING"
+            act.buzzer_silenced = False
+            act.assigned_team = None
+        for tm in db.query(Team).all():
+            tm.status = "AVAILABLE"
+        db.commit()
+
+    elif stage in ["scenario_2_rain", "rain_start", "inflow", "rain", "stage_2"]:
+        edge_ingestion_manager.set_weather_override(rainfall_mm_hr=12.0, condition="Heavy Rain")
         readings = [
             {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 1.5, "rise_rate_cm_min": 0.3},
             {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 1.5, "rise_rate_cm_min": 0.25}
         ]
-    elif stage in ["equal_surge", "surge", "tie_breaker", "stage_3"]:
+
+    elif stage in ["scenario_3_tiebreaker", "equal_surge", "surge", "tie_breaker", "tiebreaker", "stage_3"]:
+        edge_ingestion_manager.set_weather_override(rainfall_mm_hr=12.0, condition="Heavy Rain")
         readings = [
             {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6},
             {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6}
         ]
-    elif stage in ["emergency", "critical", "stage_4"]:
+
+    elif stage in ["scenario_4_hospital_critical", "emergency", "critical", "hospital_critical", "stage_4"]:
+        edge_ingestion_manager.set_weather_override(rainfall_mm_hr=15.0, condition="Severe Cloudburst")
         readings = [
             {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 4.2, "rise_rate_cm_min": 1.1},
             {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 3.8, "rise_rate_cm_min": 0.8}
         ]
+
+    elif stage in ["scenario_5_dispatch_completed", "dispatch", "dispatch_completed", "stage_5"]:
+        edge_ingestion_manager.set_weather_override(rainfall_mm_hr=12.0, condition="Heavy Rain")
+        readings = [
+            {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6},
+            {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6}
+        ]
+        is_dispatch_completed = True
+        act = db.query(Action).filter(Action.asset_id == "H01").first()
+        if act:
+            act.status = "DISPATCHED"
+            act.assigned_team = "Rapid Response Alpha"
+            act.buzzer_silenced = True
+            act.dispatched_at = datetime.utcnow()
+        team_a = db.query(Team).filter(Team.team_id == "TEAM-A").first()
+        if team_a:
+            team_a.status = "DISPATCHED"
+            team_a.current_assignment = "Metro Hospital (H01)"
+        db.commit()
+
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown scenario stage '{stage}'. Choose from: baseline, rain_start, equal_surge, emergency"
+            detail=f"Unknown scenario stage '{stage}'. Choose from: scenario_1_normal, scenario_2_rain, scenario_3_tiebreaker, scenario_4_hospital_critical, scenario_5_dispatch_completed"
         )
 
     for r in readings:

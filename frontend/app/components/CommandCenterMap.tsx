@@ -10,8 +10,6 @@ interface MapProps {
   className?: string;
 }
 
-type MapLayerType = "map" | "satellite" | "hybrid";
-
 export default function CommandCenterMap({
   assets = [],
   selectedAssetId,
@@ -21,64 +19,49 @@ export default function CommandCenterMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
-  const labelsLayerRef = useRef<any>(null);
-  const geojsonLayersRef = useRef<any[]>([]);
+  const polygonLayersRef = useRef<any[]>([]);
+  const riverLayersRef = useRef<any[]>([]);
   const markersRef = useRef<{ [key: string]: any }>({});
   const LRef = useRef<any>(null);
 
-  const [activeLayer, setActiveLayer] = useState<MapLayerType>("map");
+  // View state: 3D vs 2D
+  const [viewMode, setViewMode] = useState<"3D" | "2D">("3D");
 
-  // Helper to switch tile layers
-  const setTileLayer = (layerType: MapLayerType, L: any, map: any) => {
+  // Layer filters: Flood Risk, Infrastructure, Sensors, Satellite
+  const [activeLayers, setActiveLayers] = useState<{
+    floodRisk: boolean;
+    infrastructure: boolean;
+    sensors: boolean;
+    satellite: boolean;
+  }>({
+    floodRisk: true,
+    infrastructure: true,
+    sensors: true,
+    satellite: true,
+  });
+
+  const toggleLayer = (layerKey: "floodRisk" | "infrastructure" | "sensors" | "satellite") => {
+    setActiveLayers((prev) => ({ ...prev, [layerKey]: !prev[layerKey] }));
+  };
+
+  // Helper to switch tile layer (Satellite vs Dark CartoDB)
+  const updateTileLayer = (L: any, map: any, useSatellite: boolean) => {
     if (tileLayerRef.current) {
       map.removeLayer(tileLayerRef.current);
       tileLayerRef.current = null;
     }
-    if (labelsLayerRef.current) {
-      map.removeLayer(labelsLayerRef.current);
-      labelsLayerRef.current = null;
-    }
+    const tileUrl = useSatellite
+      ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+      : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
-    if (layerType === "map") {
-      const tile = L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        {
-          maxZoom: 19,
-          subdomains: "abcd",
-          attribution: "&copy; CartoDB",
-        }
-      ).addTo(map);
-      tileLayerRef.current = tile;
-    } else if (layerType === "satellite") {
-      const tile = L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 19,
-          attribution: "&copy; Esri World Imagery",
-        }
-      ).addTo(map);
-      tileLayerRef.current = tile;
-    } else if (layerType === "hybrid") {
-      const tile = L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        {
-          maxZoom: 19,
-          attribution: "&copy; Esri",
-        }
-      ).addTo(map);
-      const labels = L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-        {
-          maxZoom: 19,
-          subdomains: "abcd",
-        }
-      ).addTo(map);
-      tileLayerRef.current = tile;
-      labelsLayerRef.current = labels;
-    }
+    const tile = L.tileLayer(tileUrl, {
+      maxZoom: 19,
+      attribution: useSatellite ? "&copy; Esri World Imagery" : "&copy; CartoDB",
+    }).addTo(map);
+    tileLayerRef.current = tile;
   };
 
-  // 1. Initialize Map, GIS Vectors, & Markers
+  // 1. Initialize Leaflet Map
   useEffect(() => {
     if (typeof window === "undefined" || !mapContainerRef.current) return;
 
@@ -89,29 +72,28 @@ export default function CommandCenterMap({
       LRef.current = L;
 
       if (!mapInstanceRef.current) {
-        // Initial view: Chennai Adyar Basin Center
         const map = L.map(mapContainerRef.current, {
-          center: [13.040, 80.250],
+          center: [13.045, 80.260],
           zoom: 12,
           zoomControl: false,
           attributionControl: false,
         });
 
-        // Fit bounds across all monitoring nodes
+        // Fit tightly between H01 [13.0827, 80.2707] and B17 [13.0067, 80.2570]
         map.fitBounds(
           [
-            [13.090, 80.290],
-            [13.000, 80.210],
+            [13.090, 80.285],
+            [13.000, 80.245],
           ],
-          { padding: [35, 35], maxZoom: 13 }
+          { padding: [30, 30], maxZoom: 13 }
         );
 
         L.control.zoom({ position: "topright" }).addTo(map);
 
-        setTileLayer(activeLayer, L, map);
+        updateTileLayer(L, map, activeLayers.satellite);
 
-        // Add GIS River and Drainage Vectors (Adyar River, Buckingham Canal, Cooum River)
-        const adyarVector = L.polyline(
+        // Glowing Blue River Channels (Adyar River Corridor)
+        const adyarRiver = L.polyline(
           [
             [13.003, 80.190],
             [13.006, 80.212],
@@ -122,55 +104,60 @@ export default function CommandCenterMap({
           ],
           {
             color: "#06b6d4",
-            weight: 5,
-            opacity: 0.7,
-            dashArray: "1, 6",
+            weight: 6,
+            opacity: 0.85,
             lineCap: "round",
           }
         ).addTo(map);
-        adyarVector.bindTooltip("Adyar River Main Drainage Channel", {
+        adyarRiver.bindTooltip("Adyar River Arterial Drainage Channel", {
           sticky: true,
           className: "bg-[#0B132B] text-cyan-300 border border-[#1E3A5F] text-[10px] px-2 py-1 rounded shadow-lg",
         });
 
-        const buckinghamCanal = L.polyline(
+        // Low-Elevation Flood Inundation Polygons
+        const floodPolygon1 = L.polygon(
           [
-            [13.080, 80.278],
-            [13.045, 80.269],
-            [13.015, 80.260],
-            [12.980, 80.255],
+            [13.004, 80.210],
+            [13.012, 80.230],
+            [13.018, 80.255],
+            [13.010, 80.270],
+            [13.002, 80.240],
           ],
           {
-            color: "#3b82f6",
-            weight: 3.5,
-            opacity: 0.6,
-            dashArray: "4, 8",
+            color: "#38bdf8",
+            weight: 1.5,
+            fillColor: "#0284c7",
+            fillOpacity: 0.35,
+            dashArray: "4, 6",
           }
         ).addTo(map);
-        buckinghamCanal.bindTooltip("Buckingham Canal Arterial", {
+        floodPolygon1.bindTooltip("Adyar Depression Inundation Zone (Elev 3.8m)", {
           sticky: true,
-          className: "bg-[#0B132B] text-blue-300 border border-[#1E3A5F] text-[10px] px-2 py-1 rounded shadow-lg",
+          className: "bg-[#0B132B] text-sky-300 border border-[#1E3A5F] text-[10px] px-2 py-1 rounded",
         });
 
-        const cooumRiver = L.polyline(
+        const floodPolygon2 = L.polygon(
           [
-            [13.072, 80.220],
-            [13.075, 80.245],
-            [13.079, 80.270],
-            [13.067, 80.288],
+            [13.078, 80.262],
+            [13.085, 80.265],
+            [13.088, 80.275],
+            [13.081, 80.275],
           ],
           {
-            color: "#0284c7",
-            weight: 4,
-            opacity: 0.65,
+            color: "#f43f5e",
+            weight: 1.5,
+            fillColor: "#e11d48",
+            fillOpacity: 0.35,
+            dashArray: "4, 6",
           }
         ).addTo(map);
-        cooumRiver.bindTooltip("Cooum River Basin Segment", {
+        floodPolygon2.bindTooltip("Metro Hospital Depression Inundation Basin", {
           sticky: true,
-          className: "bg-[#0B132B] text-sky-300 border border-[#1E3A5F] text-[10px] px-2 py-1 rounded shadow-lg",
+          className: "bg-[#0B132B] text-rose-300 border border-[#1E3A5F] text-[10px] px-2 py-1 rounded",
         });
 
-        geojsonLayersRef.current = [adyarVector, buckinghamCanal, cooumRiver];
+        riverLayersRef.current = [adyarRiver];
+        polygonLayersRef.current = [floodPolygon1, floodPolygon2];
         mapInstanceRef.current = map;
       }
 
@@ -182,9 +169,8 @@ export default function CommandCenterMap({
         }
       }, 200);
 
-      // Render or update pins for each asset
+      // Render Dynamic Asset Markers
       assets.forEach((asset) => {
-        // Fallback coordinates for regional assets
         let lat = asset.latitude;
         let lng = asset.longitude;
         if (!lat || !lng) {
@@ -192,29 +178,17 @@ export default function CommandCenterMap({
           else if (asset.asset_id === "B17") { lat = 13.0067; lng = 80.2570; }
           else if (asset.asset_id === "D03") { lat = 13.0120; lng = 80.2480; }
           else if (asset.asset_id === "R08") { lat = 13.0450; lng = 80.2210; }
-          else if (asset.asset_id === "S05") { lat = 13.0320; lng = 80.2310; }
-          else if (asset.asset_id === "B21") { lat = 13.0210; lng = 80.2410; }
-          else if (asset.asset_id === "D07") { lat = 13.0080; lng = 80.2520; }
           else { lat = 13.0400; lng = 80.2500; }
         }
 
+        const isH01 = asset.asset_id === "H01";
+        const isB17 = asset.asset_id === "B17";
         const isCritical = asset.status === "CRITICAL" || asset.risk_score >= 85;
-        const isHigh = asset.status === "HIGH" || asset.status === "ELEVATED" || asset.risk_score >= 60;
+        const isHigh = asset.status === "HIGH" || asset.status === "ELEVATED" || asset.risk_score >= 70;
         const isSelected = selectedAssetId === asset.asset_id;
 
-        // Type-specific icon
-        let iconEmoji = "📍";
-        const typeLower = (asset.type || "").toLowerCase();
-        if (typeLower.includes("hospital")) iconEmoji = "🏥";
-        else if (typeLower.includes("bridge")) iconEmoji = "🌉";
-        else if (typeLower.includes("drain")) iconEmoji = "🌊";
-        else if (typeLower.includes("road")) iconEmoji = "🛣️";
-        else if (typeLower.includes("school")) iconEmoji = "🏫";
-        else if (typeLower.includes("facility") || typeLower.includes("substation")) iconEmoji = "⚡";
-
-        const pinColor = isCritical ? "#f43f5e" : isHigh ? "#f59e0b" : "#10b981";
-        const pinBg = isCritical ? "rgba(244, 63, 94, 0.25)" : isHigh ? "rgba(245, 158, 11, 0.25)" : "rgba(16, 185, 129, 0.25)";
-        const borderColor = isSelected ? "#38bdf8" : isCritical ? "#f43f5e" : isHigh ? "#fbbf24" : "#34d399";
+        const pinColor = isCritical ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
+        const iconEmoji = isH01 ? "🏥" : isB17 ? "🌉" : asset.type === "Drain" ? "🌊" : "📍";
 
         const iconHtml = `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translate(-50%, -100%);">
@@ -225,50 +199,53 @@ export default function CommandCenterMap({
               gap: 5px;
               padding: 3px 8px;
               background: #0B132BE6;
-              border: 1.5px solid ${borderColor};
-              border-radius: 6px;
+              border: 1.5px solid ${isSelected ? '#38bdf8' : pinColor};
+              border-radius: 8px;
               white-space: nowrap;
-              box-shadow: 0 4px 16px ${pinColor}44;
+              box-shadow: 0 4px 20px ${pinColor}66;
               font-family: system-ui, -apple-system, sans-serif;
               margin-bottom: 4px;
-              backdrop-filter: blur(6px);
+              backdrop-filter: blur(8px);
             ">
-              <span style="font-size: 11px;">${iconEmoji}</span>
-              <span style="font-size: 10px; font-weight: 800; color: #ffffff; letter-spacing: 0.02em;">${asset.asset_id}</span>
-              <span style="font-size: 10px; font-weight: 700; color: ${pinColor}; border-left: 1px solid #1E3A5F; padding-left: 4px;">
-                ${Math.round(asset.risk_score)}
+              <span style="font-size: 12px;">${iconEmoji}</span>
+              <span style="font-size: 11px; font-weight: 800; color: #ffffff;">${asset.name.split(' ')[0]} (${asset.asset_id})</span>
+              <span style="font-size: 11px; font-weight: 900; color: ${pinColor}; border-left: 1px solid #1E3A5F; padding-left: 5px;">
+                Risk: ${Math.round(asset.risk_score)}
               </span>
             </div>
 
-            <!-- Pulsing Anchor Circle -->
-            <div style="position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+            <!-- Pulsing Radar Rings -->
+            <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
               ${
                 isCritical
-                  ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background: ${pinColor}; opacity: 0.6; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
+                  ? `<div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; border: 2px solid ${pinColor}; opacity: 0.8; animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+                     <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: ${pinColor}; opacity: 0.4;"></div>`
+                  : isHigh
+                  ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid ${pinColor}; opacity: 0.6; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
                   : ""
               }
               <div style="
-                width: 22px;
-                height: 22px;
+                width: 24px;
+                height: 24px;
                 border-radius: 50%;
-                background: ${pinBg};
-                border: 2px solid ${borderColor};
+                background: ${isCritical ? '#ef4444' : isHigh ? '#f59e0b' : '#10b981'};
+                border: 2px solid #ffffff;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 0 12px ${pinColor};
+                box-shadow: 0 0 16px ${pinColor};
               ">
-                <span style="font-size: 8px; font-weight: 900; color: #ffffff;">#${asset.priority_rank || 1}</span>
+                <span style="font-size: 9px; font-weight: 900; color: #ffffff;">${asset.asset_id}</span>
               </div>
             </div>
 
-            <!-- Pointer Notch -->
+            <!-- Pointer Triangle -->
             <div style="
               width: 0; 
               height: 0; 
-              border-left: 4px solid transparent;
-              border-right: 4px solid transparent;
-              border-top: 5px solid ${borderColor};
+              border-left: 5px solid transparent;
+              border-right: 5px solid transparent;
+              border-top: 6px solid ${isSelected ? '#38bdf8' : pinColor};
               margin-top: -2px;
             "></div>
           </div>
@@ -297,96 +274,151 @@ export default function CommandCenterMap({
     return () => {
       isMounted = false;
     };
-  }, [assets, selectedAssetId, onSelectAsset, activeLayer]);
+  }, [assets, selectedAssetId, onSelectAsset]);
 
-  // Handle layer switcher change
-  const handleLayerChange = (layer: MapLayerType) => {
-    setActiveLayer(layer);
-    if (mapInstanceRef.current && LRef.current) {
-      setTileLayer(layer, LRef.current, mapInstanceRef.current);
-    }
-  };
+  // Handle layer toggles
+  useEffect(() => {
+    if (!mapInstanceRef.current || !LRef.current) return;
+    const L = LRef.current;
+    const map = mapInstanceRef.current;
+
+    updateTileLayer(L, map, activeLayers.satellite);
+
+    // Toggle flood polygons
+    polygonLayersRef.current.forEach((layer) => {
+      if (activeLayers.floodRisk) {
+        if (!map.hasLayer(layer)) map.addLayer(layer);
+      } else {
+        if (map.hasLayer(layer)) map.removeLayer(layer);
+      }
+    });
+
+    // Toggle markers based on sensors / infrastructure filters
+    Object.entries(markersRef.current).forEach(([assetId, marker]) => {
+      if (activeLayers.sensors || activeLayers.infrastructure) {
+        if (!map.hasLayer(marker)) map.addLayer(marker);
+      } else {
+        if (map.hasLayer(marker)) map.removeLayer(marker);
+      }
+    });
+  }, [activeLayers]);
 
   const containerClasses =
     className ||
-    "relative w-full h-[400px] lg:h-[460px] rounded-xl overflow-hidden border border-[#1E3A5F] shadow-xl bg-[#0B132B]";
+    "relative w-full h-[400px] lg:h-[460px] rounded-xl overflow-hidden border border-[#1E3A5F] shadow-2xl bg-[#0B132B]";
 
   return (
     <div className={containerClasses}>
-      {/* Map Header Overlay: Title + Layer Switcher */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none">
-        <div className="bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] flex items-center gap-2 pointer-events-auto shadow-lg">
+      {/* 3D View Perspective wrapper */}
+      <div
+        className="w-full h-full transition-transform duration-500 ease-out origin-bottom"
+        style={
+          viewMode === "3D"
+            ? {
+                transform: "perspective(1000px) rotateX(12deg) scale(1.02)",
+              }
+            : {}
+        }
+      >
+        <div ref={mapContainerRef} className="w-full h-full" />
+      </div>
+
+      {/* Top Header Overlay: Title, 3D/2D Toggles & Layer Filters */}
+      <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between pointer-events-none gap-2">
+        {/* Title */}
+        <div className="bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] flex items-center gap-2 pointer-events-auto shadow-xl">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
           <span className="text-xs font-bold text-white tracking-wide">
-            Live Infrastructure Map
-          </span>
-          <span className="text-[10px] text-cyan-300 font-mono bg-[#132238] px-1.5 py-0.5 rounded border border-[#1E3A5F]">
-            Chennai Urban Basin
+            City Digital Twin - Live View
           </span>
         </div>
 
-        {/* Layer Switcher Buttons: [Map] [Satellite] [Hybrid] */}
-        <div className="bg-[#0B132B]/95 backdrop-blur-md p-1 rounded-lg border border-[#1E3A5F] flex items-center gap-1 pointer-events-auto shadow-lg">
-          {(["map", "satellite", "hybrid"] as MapLayerType[]).map((layer) => (
+        {/* View Toggles & Layer Filter Chips */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {/* 3D / 2D View Switcher */}
+          <div className="bg-[#0B132B]/95 backdrop-blur-md p-1 rounded-lg border border-[#1E3A5F] flex items-center gap-1 shadow-xl">
+            {(["3D", "2D"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                className={`px-2 py-0.5 text-[11px] font-bold rounded transition-all cursor-pointer ${
+                  viewMode === mode
+                    ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/40"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          {/* Layer Filter Buttons */}
+          <div className="bg-[#0B132B]/95 backdrop-blur-md p-1 rounded-lg border border-[#1E3A5F] flex items-center gap-1 shadow-xl">
             <button
-              key={layer}
-              onClick={() => handleLayerChange(layer)}
-              className={`px-2.5 py-1 text-[11px] font-bold rounded capitalize transition-all cursor-pointer ${
-                activeLayer === layer
-                  ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/40"
-                  : "text-slate-400 hover:text-white hover:bg-[#132238]"
+              onClick={() => toggleLayer("floodRisk")}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                activeLayers.floodRisk
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "text-slate-500 hover:text-slate-300"
               }`}
             >
-              {layer}
+              Flood Risk
             </button>
-          ))}
+            <button
+              onClick={() => toggleLayer("infrastructure")}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                activeLayers.infrastructure
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              Infrastructure
+            </button>
+            <button
+              onClick={() => toggleLayer("sensors")}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                activeLayers.sensors
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              Sensors
+            </button>
+            <button
+              onClick={() => toggleLayer("satellite")}
+              className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                activeLayers.satellite
+                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              Satellite
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Leaflet Map Target */}
-      <div ref={mapContainerRef} className="w-full h-full" />
-
-      {/* Comprehensive Legend Bar at Bottom */}
-      <div className="absolute bottom-3 left-3 right-3 bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] z-[1000] flex flex-wrap items-center justify-between text-[10px] font-medium text-slate-300 shadow-xl gap-2">
-        <div className="flex items-center gap-3">
-          <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">
-            GIS Legend:
-          </span>
-          <span className="flex items-center gap-1">
-            <span>🏥</span> Hospital
-          </span>
-          <span className="flex items-center gap-1">
-            <span>🌉</span> Bridge
-          </span>
-          <span className="flex items-center gap-1">
-            <span>🌊</span> Drain
-          </span>
-          <span className="flex items-center gap-1">
-            <span>🛣️</span> Road
-          </span>
-          <span className="flex items-center gap-1">
-            <span>⚡</span> Substation / School
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-            <span className="text-rose-400 font-bold">Priority #1 Critical</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span className="text-amber-300 font-medium">Elevated</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="text-emerald-400">Safe Baseline</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-4 h-0.5 bg-cyan-400" />
-            <span className="text-cyan-300">Water Body Channel</span>
-          </span>
-        </div>
+      {/* Bottom-Left Map Legend */}
+      <div className="absolute bottom-3 left-3 bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] z-[1000] flex items-center gap-3 text-[10px] font-medium text-slate-300 shadow-xl pointer-events-auto">
+        <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">
+          Risk Scale:
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          <span className="text-rose-400 font-bold">Critical</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <span className="text-amber-300 font-medium">High</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-yellow-400" />
+          <span className="text-yellow-300">Medium</span>
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span className="text-emerald-400">Low</span>
+        </span>
       </div>
     </div>
   );
