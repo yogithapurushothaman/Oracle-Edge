@@ -43,7 +43,7 @@ export default function Sidebar({
   ];
 
   return (
-    <aside className="w-60 lg:w-64 liquid-glass rounded-2xl p-3.5 flex flex-col justify-between shrink-0 self-stretch sticky top-3 select-none z-20 max-h-[calc(100vh-1.5rem)] overflow-y-auto custom-scrollbar transition-all duration-200">
+    <aside className="w-60 lg:w-64 liquid-glass rounded-2xl p-3.5 flex flex-col justify-between shrink-0 self-stretch sticky top-3 select-none z-20 max-h-[calc(100vh-1.5rem)] overflow-y-auto custom-scrollbar transition-all duration-200 entrance-fade entrance-delay-2">
       <div className="flex flex-col flex-1">
         {/* Navigation Section Header */}
         <div className="pb-2 border-b border-white/10 mb-2 flex items-center justify-between">

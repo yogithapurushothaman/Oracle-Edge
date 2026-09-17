@@ -3,6 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 :root {
+  --u: min(calc(100vw / 1280), calc(100dvh / 800));
   --bg: #000000;
   --text: #ffffff;
   --muted: #8e8e8e;
@@ -13,10 +14,17 @@
   --trust-bg: #28282a;
   --trust-border: rgba(255, 255, 255, 0.4);
   --trust-text: #c4c2c3;
-  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "BubbledotICG-FinePos", "Geist Pixel Circle", monospace;
   --background: #030a14;
   --foreground: #f1f5f9;
+}
+
+@supports not (height: 100dvh) {
+  :root {
+    --u: min(calc(100vw / 1280), calc(100vh / 800));
+  }
 }
 
 :root.dark, [data-theme="dark"], .dark {
@@ -37,22 +45,99 @@
   font-display: swap;
 }
 
-body {
-  font-family: var(--font-sans);
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #000;
+  color: var(--text);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: transparent;
-  color: var(--text);
+  text-rendering: geometricPrecision;
   overflow-x: hidden;
+}
+
+/* ============================================================
+   SEAMLESS DUAL-VIDEO BACKGROUND & OPTICAL CONTRAST SHIELD
+   ============================================================ */
+.bg {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: #000;
+  pointer-events: none;
+  z-index: -20;
+}
+
+.bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 51% 8%;
+  display: block;
+  background-color: #000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s linear;
+}
+
+.bg-video.is-active {
+  opacity: 1;
+}
+
+/* Optical Contrast Scrim Shield */
+.optical-contrast-shield {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -10;
+  background: radial-gradient(circle at 50% 15%, rgba(10, 25, 47, 0.40) 0%, rgba(5, 15, 30, 0.65) 50%, rgba(2, 6, 14, 0.88) 100%);
+}
+
+/* ============================================================
+   TIMED ENTRANCE ORCHESTRATION
+   ============================================================ */
+.entrance-fade {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), transform 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.is-loaded .entrance-fade {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.is-loaded .entrance-delay-1 {
+  transition-delay: 0.12s;
+}
+
+.is-loaded .entrance-delay-2 {
+  transition-delay: 0.24s;
+}
+
+.is-loaded .entrance-delay-3 {
+  transition-delay: 0.36s;
+}
+
+.is-loaded .entrance-delay-4 {
+  transition-delay: 0.48s;
 }
 
 /* =========================================================
    LIQUID-GLASS ARCHITECTURE (Translucent Frosted Glass)
    ========================================================= */
 .liquid-glass {
-  background: rgba(12, 26, 47, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(12, 26, 47, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 12px 32px rgba(0, 0, 0, 0.5);
   position: relative;

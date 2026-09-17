@@ -309,7 +309,7 @@ export default function OracleCommandCenter() {
       {/* ===================================================================== */}
       {/* 1. TOP HEADER (Shrink 0)                                              */}
       {/* ===================================================================== */}
-      <header className="header-anim liquid-glass px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shrink-0">
+      <header className="header-anim entrance-fade entrance-delay-1 liquid-glass px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shrink-0">
         {/* Left: Circular Logo Button + Glowing Cyan Glyph + ORACLE EDGE in --font-display */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-cyan-950/80 border border-cyan-400/50 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] shrink-0">
@@ -481,7 +481,7 @@ export default function OracleCommandCenter() {
       {/* ===================================================================== */}
       {/* 2. EXECUTIVE SUMMARY (TOP STATS ROW - 4 CARDS)                        */}
       {/* ===================================================================== */}
-      <section className="anim grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" style={{ "--d": "0.1s" } as React.CSSProperties}>
+      <section className="entrance-fade entrance-delay-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: Critical Assets */}
         <div className="liquid-glass p-3.5 flex items-center justify-between">
           <div>
@@ -576,7 +576,7 @@ export default function OracleCommandCenter() {
       {/* ===================================================================== */}
       {/* 3. CENTRAL WORKSPACE (DIGITAL TWIN & LIVE INTEL)                      */}
       {/* ===================================================================== */}
-      <section className="anim grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" style={{ "--d": "0.2s" } as React.CSSProperties}>
+      <section className="entrance-fade entrance-delay-3 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Center-Left Hero: City Digital Twin - Live View (7 cols) */}
         <div id="digital-twin-map" className="lg:col-span-7 liquid-glass p-3 flex flex-col">
           <CommandCenterMap
@@ -824,7 +824,7 @@ export default function OracleCommandCenter() {
       {/* ===================================================================== */}
       {/* 4. BOTTOM ANALYTICS ROW                                               */}
       {/* ===================================================================== */}
-      <section id="risk-intelligence-workspace" className="anim grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" style={{ "--d": "0.3s" } as React.CSSProperties}>
+      <section id="risk-intelligence-workspace" className="entrance-fade entrance-delay-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Asset Details (4 cols) */}
         <div id="asset-profile-registry" className="lg:col-span-4 liquid-glass p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
