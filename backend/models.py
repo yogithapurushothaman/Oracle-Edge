@@ -282,9 +282,14 @@ def init_db():
 
 def seed_assets(db: Session):
     """
-    Seed required PRD Step 1 & Step 4 assets:
-    - H01: Metro Hospital (Flood, Urban Infrastructure)
-    - B17: River Bridge B17 (Flood/Structural, Urban Infrastructure)
+    Seed full reference infrastructure network:
+    - H01: Metro Hospital (Physical Node 1)
+    - B17: Bridge B17 (Physical Node 2)
+    - D03: Drain D03 (Velachery Canal Outlet)
+    - R08: Road R08 (GST Arterial Underpass)
+    - B21: Bridge B21 (Kotturpuram Bridge)
+    - D07: Drain D07 (Adyar Sluice Channel)
+    - S05: School S05 (St. Mary's School)
     """
     initial_assets = [
         {
@@ -301,14 +306,74 @@ def seed_assets(db: Session):
         },
         {
             "asset_id": "B17",
-            "name": "River Bridge B17",
-            "criticality": 0.75,
-            "population_served": 15000,
+            "name": "Bridge B17",
+            "criticality": 0.95,
+            "population_served": 12000,
             "asset_type": "Bridge",
             "domain": "URBAN_INFRASTRUCTURE",
             "target_hazard": "FLOOD",
             "latitude": 13.0827,
             "longitude": 80.2707,
+            "status": "ACTIVE"
+        },
+        {
+            "asset_id": "D03",
+            "name": "Drain D03",
+            "criticality": 0.85,
+            "population_served": 8500,
+            "asset_type": "Drain",
+            "domain": "URBAN_INFRASTRUCTURE",
+            "target_hazard": "FLOOD",
+            "latitude": 12.9815,
+            "longitude": 80.2180,
+            "status": "ACTIVE"
+        },
+        {
+            "asset_id": "R08",
+            "name": "Road R08",
+            "criticality": 0.75,
+            "population_served": 25000,
+            "asset_type": "Road",
+            "domain": "URBAN_INFRASTRUCTURE",
+            "target_hazard": "FLOOD",
+            "latitude": 13.0102,
+            "longitude": 80.2158,
+            "status": "ACTIVE"
+        },
+        {
+            "asset_id": "B21",
+            "name": "Bridge B21",
+            "criticality": 0.65,
+            "population_served": 18000,
+            "asset_type": "Bridge",
+            "domain": "URBAN_INFRASTRUCTURE",
+            "target_hazard": "FLOOD",
+            "latitude": 13.0210,
+            "longitude": 80.2410,
+            "status": "ACTIVE"
+        },
+        {
+            "asset_id": "D07",
+            "name": "Drain D07",
+            "criticality": 0.55,
+            "population_served": 6000,
+            "asset_type": "Drain",
+            "domain": "URBAN_INFRASTRUCTURE",
+            "target_hazard": "FLOOD",
+            "latitude": 13.0080,
+            "longitude": 80.2520,
+            "status": "ACTIVE"
+        },
+        {
+            "asset_id": "S05",
+            "name": "School S05",
+            "criticality": 0.40,
+            "population_served": 4000,
+            "asset_type": "School",
+            "domain": "URBAN_INFRASTRUCTURE",
+            "target_hazard": "FLOOD",
+            "latitude": 13.0320,
+            "longitude": 80.2310,
             "status": "ACTIVE"
         }
     ]
@@ -319,45 +384,50 @@ def seed_assets(db: Session):
             asset = Asset(**item)
             db.add(asset)
         else:
-            # Keep seed values up to date
             asset.name = item["name"]
             asset.criticality = item["criticality"]
             asset.population_served = item["population_served"]
             asset.asset_type = item["asset_type"]
             asset.domain = item.get("domain", "URBAN_INFRASTRUCTURE")
             asset.target_hazard = item.get("target_hazard", "FLOOD")
-            asset.latitude = item.get("latitude", 13.0405)
-            asset.longitude = item.get("longitude", 80.2450)
+            asset.latitude = item.get("latitude")
+            asset.longitude = item.get("longitude")
     db.commit()
 
 
 def seed_teams(db: Session):
     """
-    Seed municipal emergency response dispatch teams:
-    - TEAM-ALPHA: Rapid Response Team Alpha (ICU Life-Support & Flood Defense Specialist)
-    - TEAM-BETA:  Rescue Unit Beta (Bridge Arterial Corridor & Structural Specialist)
+    Seed municipal response teams per official command-center UI:
+    - TEAM-A: Team A -> Hospital H01 (or Bridge B17) (High Priority)
+    - TEAM-B: Team B -> Drain D03 (High Priority)
+    - TEAM-C: Team C -> Road R08 (Medium Priority)
     """
     initial_teams = [
         {
-            "team_id": "TEAM-ALPHA",
-            "team_name": "Rapid Response Team Alpha",
-            "specialty": "ICU Life-Support & Inundation Defense",
+            "team_id": "TEAM-A",
+            "team_name": "Team A",
+            "specialty": "Rapid Response & ICU Protection",
             "hazard_domain": "FLOOD",
-            "status": "AVAILABLE",
-            "current_assignment": None
+            "status": "DISPATCHED",
+            "current_assignment": "Hospital H01"
         },
         {
-            "team_id": "TEAM-BETA",
-            "team_name": "Rescue Unit Beta",
-            "specialty": "Bridge Arterial Transit & Structural Evacuation",
+            "team_id": "TEAM-B",
+            "team_name": "Team B",
+            "specialty": "Canal Desiltation & Flow Defense",
+            "hazard_domain": "FLOOD",
+            "status": "DISPATCHED",
+            "current_assignment": "Drain D03"
+        },
+        {
+            "team_id": "TEAM-C",
+            "team_name": "Team C",
+            "specialty": "Arterial Road Diversion & Traffic Patrol",
             "hazard_domain": "FLOOD",
             "status": "AVAILABLE",
-            "current_assignment": None
+            "current_assignment": "Road R08"
         }
     ]
-
-    # Clean up legacy teams
-    db.query(Team).filter(Team.team_id.notin_(["TEAM-ALPHA", "TEAM-BETA"])).delete(synchronize_session=False)
 
     for item in initial_teams:
         team = db.query(Team).filter(Team.team_id == item["team_id"]).first()
@@ -368,6 +438,7 @@ def seed_teams(db: Session):
             team.team_name = item["team_name"]
             team.specialty = item["specialty"]
             team.hazard_domain = item["hazard_domain"]
+            team.current_assignment = item["current_assignment"]
     db.commit()
 
 
