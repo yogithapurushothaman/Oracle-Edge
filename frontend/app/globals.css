@@ -3,21 +3,40 @@
 @custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 :root {
-  --background: #f1f5f9;
-  --foreground: #0f172a;
-}
-
-:root.dark, [data-theme="dark"], .dark {
-  --background: #080c14;
+  --background: #030a14;
   --foreground: #f1f5f9;
 }
 
-body {
-  background-color: var(--background);
+:root.dark, [data-theme="dark"], .dark {
+  --background: #030a14;
+  --foreground: #f1f5f9;
+}
+
+body, .control-room-bg {
+  background-color: #030a14;
+  background-image: radial-gradient(circle at 50% 15%, #0f2b48 0%, #081628 35%, #030a14 100%), linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 30px 30px, 30px 30px;
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   overflow-x: hidden;
   transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Neon River & 3D Map Satellite Filters */
+.neon-river {
+  stroke: #00f0ff !important;
+  stroke-width: 4px !important;
+  filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.8)) !important;
+}
+
+.map-satellite-filter,
+.leaflet-tile-pane {
+  filter: brightness(0.7) contrast(1.25) saturate(1.5) hue-rotate(-10deg) !important;
+}
+
+.inner-shadow {
+  box-shadow: inset 0 0 50px rgba(3, 10, 20, 0.95) !important;
 }
 
 /* Glassmorphism Card Utilities */
@@ -123,7 +142,7 @@ body {
 @import "leaflet/dist/leaflet.css";
 
 .leaflet-container {
-  background-color: #0b1120 !important;
+  background-color: transparent !important;
   font-family: inherit;
 }
 

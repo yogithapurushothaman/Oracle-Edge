@@ -328,7 +328,7 @@ export default function OracleCommandCenter() {
   const gaugeDashoffset = gaugeCircumference - (riskScoreClamped / 100) * gaugeCircumference;
 
   return (
-    <div className="min-h-screen bg-[#0B132B] text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen control-room-bg text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-black">
       {/* --------------------------------------------------------------------- */}
       {/* LEFT SIDEBAR NAVIGATION                                               */}
       {/* --------------------------------------------------------------------- */}

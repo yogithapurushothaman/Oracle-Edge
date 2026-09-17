@@ -30,7 +30,7 @@ export default function RootLayout({
       data-theme="dark"
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col control-room-bg">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

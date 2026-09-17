@@ -92,21 +92,28 @@ export default function CommandCenterMap({
 
         updateTileLayer(L, map, activeLayers.satellite);
 
-        // Glowing Blue River Channels (Adyar River Corridor)
+        // Glowing Blue River Channels (Adyar River Corridor) matching screenshot
         const adyarRiver = L.polyline(
           [
-            [13.003, 80.190],
-            [13.006, 80.212],
-            [13.009, 80.235],
-            [13.013, 80.248],
-            [13.008, 80.262],
-            [13.006, 80.278],
+            [13.0010, 80.1700],
+            [13.0035, 80.1920],
+            [13.0050, 80.2080],
+            [13.0075, 80.2240],
+            [13.0110, 80.2380],
+            [13.0132, 80.2470],
+            [13.0085, 80.2565],
+            [13.0067, 80.2570], // River Bridge (B17)
+            [13.0055, 80.2650],
+            [13.0070, 80.2740],
+            [13.0100, 80.2830],
+            [13.0130, 80.2880],
           ],
           {
-            color: "#06b6d4",
-            weight: 6,
-            opacity: 0.85,
+            color: "#00f0ff",
+            weight: 4,
+            opacity: 0.95,
             lineCap: "round",
+            className: "neon-river drop-shadow-[0_0_10px_rgba(0,240,255,0.8)]",
           }
         ).addTo(map);
         adyarRiver.bindTooltip("Adyar River Arterial Drainage Channel", {
@@ -183,12 +190,43 @@ export default function CommandCenterMap({
 
         const isH01 = asset.asset_id === "H01";
         const isB17 = asset.asset_id === "B17";
-        const isCritical = asset.status === "CRITICAL" || asset.risk_score >= 85;
-        const isHigh = asset.status === "HIGH" || asset.status === "ELEVATED" || asset.risk_score >= 70;
+        const isCritical = asset.status === "CRITICAL" || asset.risk_score >= 85 || isH01;
+        const isHigh = asset.status === "HIGH" || asset.status === "ELEVATED" || asset.risk_score >= 70 || isB17;
         const isSelected = selectedAssetId === asset.asset_id;
 
-        const pinColor = isCritical ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
+        const pinColor = isH01 ? "#ef4444" : isB17 ? "#f59e0b" : isCritical ? "#ef4444" : isHigh ? "#f59e0b" : "#10b981";
         const iconEmoji = isH01 ? "🏥" : isB17 ? "🌉" : asset.type === "Drain" ? "🌊" : "📍";
+
+        // Neon Glowing Node Pins matching specification:
+        // H01: w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-[0_0_20px_rgba(239,68,68,1)] + animate-ping
+        // B17: w-6 h-6 bg-amber-500 rounded-full border-2 border-white shadow-[0_0_20px_rgba(245,158,11,1)]
+        let pinBodyHtml = "";
+        if (isH01) {
+          pinBodyHtml = `
+            <div class="relative w-8 h-8 flex items-center justify-center">
+              <div class="absolute w-6 h-6 bg-red-500 rounded-full animate-ping opacity-75"></div>
+              <div class="relative z-10 w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-[0_0_20px_rgba(239,68,68,1)] flex items-center justify-center text-[9px] font-black text-white">
+                H01
+              </div>
+            </div>
+          `;
+        } else if (isB17) {
+          pinBodyHtml = `
+            <div class="relative w-8 h-8 flex items-center justify-center">
+              <div class="relative z-10 w-6 h-6 bg-amber-500 rounded-full border-2 border-white shadow-[0_0_20px_rgba(245,158,11,1)] flex items-center justify-center text-[9px] font-black text-white">
+                B17
+              </div>
+            </div>
+          `;
+        } else {
+          pinBodyHtml = `
+            <div class="relative w-8 h-8 flex items-center justify-center">
+              <div class="relative z-10 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white shadow-[0_0_20px_rgba(16,185,129,0.9)] flex items-center justify-center text-[9px] font-black text-white">
+                ${asset.asset_id}
+              </div>
+            </div>
+          `;
+        }
 
         const iconHtml = `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translate(-50%, -100%);">
@@ -196,48 +234,26 @@ export default function CommandCenterMap({
             <div style="
               display: flex;
               align-items: center;
-              gap: 5px;
+              gap: 6px;
               padding: 3px 8px;
-              background: #0B132BE6;
-              border: 1.5px solid ${isSelected ? '#38bdf8' : pinColor};
+              background: rgba(11, 19, 43, 0.95);
+              border: 1.5px solid ${isSelected ? '#38bdf8' : isH01 ? '#ef4444' : isB17 ? '#f59e0b' : pinColor};
               border-radius: 8px;
               white-space: nowrap;
-              box-shadow: 0 4px 20px ${pinColor}66;
+              box-shadow: 0 4px 20px ${isH01 ? 'rgba(239, 68, 68, 0.6)' : isB17 ? 'rgba(245, 158, 11, 0.6)' : pinColor + '66'};
               font-family: system-ui, -apple-system, sans-serif;
               margin-bottom: 4px;
               backdrop-filter: blur(8px);
             ">
               <span style="font-size: 12px;">${iconEmoji}</span>
               <span style="font-size: 11px; font-weight: 800; color: #ffffff;">${asset.name.split(' ')[0]} (${asset.asset_id})</span>
-              <span style="font-size: 11px; font-weight: 900; color: ${pinColor}; border-left: 1px solid #1E3A5F; padding-left: 5px;">
+              <span style="font-size: 11px; font-weight: 900; color: ${isH01 ? '#ef4444' : isB17 ? '#f59e0b' : pinColor}; border-left: 1px solid #1E3A5F; padding-left: 6px;">
                 Risk: ${Math.round(asset.risk_score)}
               </span>
             </div>
 
-            <!-- Pulsing Radar Rings -->
-            <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-              ${
-                isCritical
-                  ? `<div style="position: absolute; width: 44px; height: 44px; border-radius: 50%; border: 2px solid ${pinColor}; opacity: 0.8; animation: ping 1.2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-                     <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: ${pinColor}; opacity: 0.4;"></div>`
-                  : isHigh
-                  ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid ${pinColor}; opacity: 0.6; animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
-                  : ""
-              }
-              <div style="
-                width: 24px;
-                height: 24px;
-                border-radius: 50%;
-                background: ${isCritical ? '#ef4444' : isHigh ? '#f59e0b' : '#10b981'};
-                border: 2px solid #ffffff;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 0 16px ${pinColor};
-              ">
-                <span style="font-size: 9px; font-weight: 900; color: #ffffff;">${asset.asset_id}</span>
-              </div>
-            </div>
+            <!-- Glowing UI Circle Pin -->
+            ${pinBodyHtml}
 
             <!-- Pointer Triangle -->
             <div style="
@@ -245,7 +261,7 @@ export default function CommandCenterMap({
               height: 0; 
               border-left: 5px solid transparent;
               border-right: 5px solid transparent;
-              border-top: 6px solid ${isSelected ? '#38bdf8' : pinColor};
+              border-top: 6px solid ${isSelected ? '#38bdf8' : isH01 ? '#ef4444' : isB17 ? '#f59e0b' : pinColor};
               margin-top: -2px;
             "></div>
           </div>
@@ -305,13 +321,13 @@ export default function CommandCenterMap({
 
   const containerClasses =
     className ||
-    "relative w-full h-[400px] lg:h-[460px] rounded-xl overflow-hidden border border-[#1E3A5F] shadow-2xl bg-[#0B132B]";
+    "relative w-full h-[400px] lg:h-[460px] rounded-xl overflow-hidden border border-[#1E3A5F] shadow-2xl bg-[url('/image_715fc4.jpg')] bg-cover bg-center inner-shadow";
 
   return (
     <div className={containerClasses}>
       {/* 3D View Perspective wrapper */}
       <div
-        className="w-full h-full transition-transform duration-500 ease-out origin-bottom"
+        className="w-full h-full transition-transform duration-500 ease-out origin-bottom bg-[url('/image_715fc4.jpg')] bg-cover bg-center rounded-xl inner-shadow"
         style={
           viewMode === "3D"
             ? {
@@ -320,7 +336,10 @@ export default function CommandCenterMap({
             : {}
         }
       >
-        <div ref={mapContainerRef} className="w-full h-full" />
+        <div
+          ref={mapContainerRef}
+          className="w-full h-full filter brightness-[0.7] contrast-[1.25] saturate-[1.5] hue-rotate-[-10deg] bg-[url('/image_715fc4.jpg')] bg-cover bg-center rounded-xl inner-shadow"
+        />
       </div>
 
       {/* Top Header Overlay: Title, 3D/2D Toggles & Layer Filters */}
