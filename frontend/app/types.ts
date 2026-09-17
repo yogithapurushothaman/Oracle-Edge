@@ -40,7 +40,7 @@ export interface AssetMonitoringData {
   priority_score: number;
   risk_score: number;
   priority_rank: number;
-  status: "CRITICAL" | "SAFE" | "MODERATE";
+  status: "CRITICAL" | "SAFE" | "MODERATE" | "ELEVATED" | string;
   led_safe: boolean;
   led_critical: boolean;
   shap_breakdown?: Record<string, number>;
@@ -154,7 +154,9 @@ export interface ApiStatus {
 
 export interface DeviceStatus {
   device_id: string;
-  status: "ONLINE" | "OFFLINE";
+  status: "ONLINE" | "OFFLINE" | "SIMULATION" | string;
+  mode?: "HARDWARE" | "SIMULATION" | string;
+  is_online?: boolean;
   last_seen_sec: number;
   last_seen?: string;
 }

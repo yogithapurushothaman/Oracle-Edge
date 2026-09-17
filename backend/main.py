@@ -13,6 +13,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Dict, Optional, Set, Any
 from contextlib import asynccontextmanager
+from pydantic import BaseModel, Field
 
 from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,7 @@ try:
     from backend.services.decision_engine import decision_engine
     from backend.services.weather_service import weather_service
     from backend.services.satellite_service import satellite_service
+    from backend.engine.triage import municipal_triage_engine
 except ImportError:
     from models import (
         init_db, get_db, SessionLocal, Asset, TelemetryReading,
@@ -43,6 +45,7 @@ except ImportError:
     from services.decision_engine import decision_engine
     from services.weather_service import weather_service
     from services.satellite_service import satellite_service
+    from engine.triage import municipal_triage_engine
 
 
 # Active SSE subscribers
@@ -109,8 +112,8 @@ def calculate_risk_score_out_of_100(water_level_cm: float, rise_rate_cm_min: flo
 def get_device_heartbeat(device_id: str = "ORACLE-ESP32-01", db: Optional[Session] = None) -> dict:
     """
     Evaluates hardware watchdog status:
-    - If (now - last_seen).total_seconds() <= 8.0: ONLINE
-    - If (now - last_seen).total_seconds() > 8.0: OFFLINE
+    - If (now - last_seen).total_seconds() <= 8.0: ONLINE (Physical Hardware Mode)
+    - If (now - last_seen).total_seconds() > 8.0: SIMULATION (Standalone / Offline Simulation Mode)
     """
     close_db = False
     if db is None:
@@ -122,12 +125,15 @@ def get_device_heartbeat(device_id: str = "ORACLE-ESP32-01", db: Optional[Sessio
         if not device or not device.last_seen:
             return {
                 "device_id": device_id,
-                "status": "OFFLINE",
+                "status": "SIMULATION",
+                "mode": "SIMULATION",
+                "is_online": False,
                 "last_seen_sec": 9999
             }
         elapsed = (now - device.last_seen).total_seconds()
         is_online = elapsed <= 8.0
-        status_str = "ONLINE" if is_online else "OFFLINE"
+        status_str = "ONLINE" if is_online else "SIMULATION"
+        mode_str = "HARDWARE" if is_online else "SIMULATION"
 
         if device.status != status_str:
             device.status = status_str
@@ -139,6 +145,8 @@ def get_device_heartbeat(device_id: str = "ORACLE-ESP32-01", db: Optional[Sessio
         return {
             "device_id": device_id,
             "status": status_str,
+            "mode": mode_str,
+            "is_online": is_online,
             "last_seen_sec": max(0, int(elapsed))
         }
     finally:
@@ -224,7 +232,7 @@ def build_dashboard_state(db: Session) -> dict:
             timestamp = datetime.utcnow().isoformat()
 
         else:
-            # FLOOD (Default)
+            # FLOOD (Default) - Multi-Factor Municipal Triage
             latest = db.query(TelemetryReading).filter(
                 TelemetryReading.asset_id == asset.asset_id
             ).order_by(TelemetryReading.id.desc()).first()
@@ -232,18 +240,24 @@ def build_dashboard_state(db: Session) -> dict:
             if latest:
                 water_level = latest.water_level_cm
                 rise_rate = latest.rise_rate_cm_min
-                priority_score = latest.priority_score
-                status_str = latest.status
                 timestamp = latest.timestamp.isoformat()
-                is_critical = (status_str == "CRITICAL")
             else:
-                water_level = 8.5 if asset.asset_id == "H01" else 6.2
-                rise_rate = 0.1 if asset.asset_id == "H01" else 0.05
-                criticality = asset.criticality or 0.75
-                priority_score = (water_level * 0.4) + (rise_rate * 0.2) + (criticality * 40.0)
-                is_critical = False
-                status_str = "SAFE"
+                water_level = 0.0
+                rise_rate = 0.0
                 timestamp = datetime.utcnow().isoformat()
+
+            scored = municipal_triage_engine.compute_asset_risk(asset.asset_id, water_level, rise_rate)
+            risk_score = scored["total_risk"]
+            priority_score = scored["total_risk"]
+            status_str = scored["status"]
+            is_critical = (status_str == "CRITICAL")
+            shap_factors = {
+                "IoT Depth & Rise Rate": scored["breakdown"]["iot_points"],
+                "Infrastructure Criticality": scored["breakdown"]["infra_criticality"],
+                "Population Exposure": scored["breakdown"]["population_exposure"],
+                "Satellite GIS Risk": scored["breakdown"]["satellite_gis"],
+                "Historical Baseline": scored["breakdown"]["historical_baseline"],
+            }
 
             sat_obs = satellite_service.get_evaluator_observation(
                 asset.asset_id,
@@ -252,12 +266,6 @@ def build_dashboard_state(db: Session) -> dict:
             )
             satellite_ndwi_delta = float(sat_obs.get("satellite_ndwi_delta", 0.12))
 
-            risk_score = calculate_risk_score_out_of_100(water_level, rise_rate, asset.criticality, is_critical)
-            shap_factors = {
-                "Water Level Impact": 40.0,
-                "Rapid Rise Rate": 35.0,
-                "Facility Vulnerability": 25.0
-            }
             surface_temp = 31.0
             thermal_risk = 15.0
             humidity_val = 78.0
@@ -310,31 +318,25 @@ def build_dashboard_state(db: Session) -> dict:
     for idx, a in enumerate(asset_data_list):
         a["priority_rank"] = idx + 1
 
-    top_priority_asset = asset_data_list[0] if asset_data_list else None
-    top_priority_id = top_priority_asset["asset_id"] if top_priority_asset else "H01"
+    # Check active action / dispatch state
+    active_action = db.query(Action).filter(Action.status != "COMPLETED").order_by(Action.created_at.desc()).first()
+    is_silenced = bool(active_action and active_action.buzzer_silenced)
+    assigned_team_name = active_action.assigned_team if (active_action and active_action.status == "DISPATCHED") else None
 
-    # Formulate Recommended Action
-    h01_item = next((a for a in asset_data_list if a["asset_id"] == "H01"), None)
-    b17_item = next((a for a in asset_data_list if a["asset_id"] == "B17"), None)
+    # Compute overall municipal triage recommendation and tie-breaker
+    triage_payload = [
+        {"asset_id": a["asset_id"], "water_level_cm": a["water_level_cm"], "rise_rate_cm_min": a["rise_rate_cm_min"]}
+        for a in asset_data_list
+    ]
+    triage_result = municipal_triage_engine.compute_municipal_triage(
+        triage_payload,
+        is_dispatched=is_silenced,
+        assigned_team=assigned_team_name
+    )
 
-    h01_crit = h01_item and h01_item["status"] == "CRITICAL"
-    b17_crit = b17_item and b17_item["status"] == "CRITICAL"
-
-    if h01_crit and b17_crit:
-        recommended_action = f"DUAL CRISIS: Deploy Emergency Team to Metro Hospital ({top_priority_id}) & Alert Bridge Operations"
-        action_level = "CRITICAL"
-    elif h01_crit:
-        recommended_action = "Deploy Emergency Team to Hospital (H01)"
-        action_level = "CRITICAL"
-    elif b17_crit:
-        recommended_action = "Immediate Bridge Deck Closure & Inspection Team Dispatch (B17)"
-        action_level = "CRITICAL"
-    elif any(a["risk_score"] >= 45.0 for a in asset_data_list):
-        recommended_action = "Elevated Alert: Monitor Drainage Inlets & Standby Rapid Response Unit"
-        action_level = "MODERATE"
-    else:
-        recommended_action = "Routine Monitoring: All flood barriers & drainage baseline nominal."
-        action_level = "SAFE"
+    top_priority_id = triage_result["top_priority"]
+    recommended_action = triage_result["recommended_action"]
+    action_level = triage_result["action_level"]
 
     # Seed baseline actions if table is empty
     actions_in_db = db.query(Action).all()
@@ -522,20 +524,15 @@ def ingest_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
     any_unsilenced_critical = False
 
     for reading in payload.readings:
-        # 1. Fetch asset criticality from database
-        asset = db.query(Asset).filter(Asset.asset_id == reading.asset_id).first()
-        criticality = asset.criticality if asset else 0.5
-
-        # 3. Critical threshold evaluation (supporting full scale 80cm PRD demo and tabletop 25cm model)
-        is_full_scale = (reading.water_level_cm > 30.0) or (payload.device_id == "ORACLE-001")
-        if is_full_scale:
-            is_critical = (reading.water_level_cm >= 70.0) or (reading.rise_rate_cm_min >= 2.5)
-            is_elevated = (reading.water_level_cm >= 40.0) or (reading.rise_rate_cm_min >= 0.8)
-        else:
-            is_critical = (reading.water_level_cm >= 18.0) or (reading.rise_rate_cm_min >= 1.0)
-            is_elevated = (reading.water_level_cm >= 12.0) or (reading.rise_rate_cm_min >= 0.5)
-
-        status_str = "CRITICAL" if is_critical else ("MODERATE" if is_elevated else "SAFE")
+        scored = municipal_triage_engine.compute_asset_risk(
+            reading.asset_id,
+            reading.water_level_cm,
+            reading.rise_rate_cm_min
+        )
+        status_str = scored["status"]
+        priority_score = scored["total_risk"]
+        is_critical = scored["led_critical"]
+        priority_scores[reading.asset_id] = priority_score
 
         # Check if active incident for this asset has been silenced (team dispatched)
         active_action = db.query(Action).filter(
@@ -547,33 +544,14 @@ def ingest_telemetry(payload: TelemetryPayload, db: Session = Depends(get_db)):
         if is_critical and not is_silenced:
             any_unsilenced_critical = True
 
-        # 2. Priority Logic aligned with MultiHazard Decision Engine
-        if is_full_scale:
-            if is_critical:
-                priority_score = min(99.0, max(88.0, 75.0 + (reading.water_level_cm * 0.2) + (criticality * 15.0)))
-            elif reading.water_level_cm >= 55.0:
-                priority_score = min(82.0, max(65.0, 45.0 + (reading.water_level_cm * 0.4) + (criticality * 15.0)))
-            elif reading.water_level_cm >= 35.0:
-                priority_score = min(60.0, max(40.0, 25.0 + (reading.water_level_cm * 0.5) + (criticality * 10.0)))
-            else:
-                priority_score = min(30.0, max(15.0, 10.0 + (reading.water_level_cm * 0.5) + (criticality * 10.0)))
-        else:
-            if is_critical:
-                priority_score = min(99.0, max(82.0, 75.0 + (reading.water_level_cm * 0.5) + (criticality * 15.0)))
-            elif is_elevated:
-                priority_score = min(79.0, max(45.0, 35.0 + (reading.water_level_cm * 1.5) + (criticality * 20.0)))
-            else:
-                priority_score = (reading.water_level_cm * 0.4) + (reading.rise_rate_cm_min * 0.2) + (criticality * 40.0)
-        priority_scores[reading.asset_id] = priority_score
-
-        # 4. Actuator states: Red LED stays lit for critical depth even when buzzer is silenced
+        # Actuator states for hardware closed loop
         actuators[reading.asset_id] = ActuatorState(
             status=status_str,
-            led_safe=not is_critical,
-            led_critical=is_critical
+            led_safe=scored["led_safe"],
+            led_critical=scored["led_critical"]
         )
 
-        # 5. Persist telemetry reading to SQLite
+        # Persist telemetry reading to SQLite
         db_reading = TelemetryReading(
             device_id=payload.device_id,
             sensor_id=reading.sensor_id,
@@ -993,6 +971,73 @@ def ingest_readings_alias(raw_payload: Dict[str, Any], db: Session = Depends(get
         ]
     }
     return res_dict
+
+
+# ==========================================
+# Municipal Scenario Simulation Endpoint (Offline / Standalone Mode)
+# ==========================================
+
+class ScenarioIn(BaseModel):
+    stage: str = Field(..., description="Stage name: baseline, rain_start, equal_surge, emergency", example="equal_surge")
+
+
+@app.post(
+    "/api/v1/simulate/scenario",
+    summary="Dedicated municipal scenario simulation endpoint (Offline / Standalone Mode)"
+)
+def simulate_scenario(payload: ScenarioIn, db: Session = Depends(get_db)):
+    """
+    Simulates municipal flood stages without physical hardware:
+    - baseline: Normal dry conditions (0.0 cm)
+    - rain_start: Moderate rain inflow (1.5 cm)
+    - equal_surge: Both assets at 3.5 cm (Triggers Tie-Breaker: H01 ~95 vs B17 ~75)
+    - emergency: Critical inundation (H01 4.2 cm / B17 3.8 cm) -> Red alert + Buzzer
+    """
+    stage = payload.stage.lower().strip()
+    if stage in ["baseline", "normal", "stage_1"]:
+        readings = [
+            {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 0.0, "rise_rate_cm_min": 0.0},
+            {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 0.0, "rise_rate_cm_min": 0.0}
+        ]
+    elif stage in ["rain_start", "inflow", "rain", "stage_2"]:
+        readings = [
+            {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 1.5, "rise_rate_cm_min": 0.3},
+            {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 1.5, "rise_rate_cm_min": 0.25}
+        ]
+    elif stage in ["equal_surge", "surge", "tie_breaker", "stage_3"]:
+        readings = [
+            {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6},
+            {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 3.5, "rise_rate_cm_min": 0.6}
+        ]
+    elif stage in ["emergency", "critical", "stage_4"]:
+        readings = [
+            {"sensor_id": "SNS-H01", "asset_id": "H01", "water_level_cm": 4.2, "rise_rate_cm_min": 1.1},
+            {"sensor_id": "SNS-B17", "asset_id": "B17", "water_level_cm": 3.8, "rise_rate_cm_min": 0.8}
+        ]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown scenario stage '{stage}'. Choose from: baseline, rain_start, equal_surge, emergency"
+        )
+
+    for r in readings:
+        scored = municipal_triage_engine.compute_asset_risk(r["asset_id"], r["water_level_cm"], r["rise_rate_cm_min"])
+        db_reading = TelemetryReading(
+            device_id="SIMULATOR-OFFLINE",
+            sensor_id=r["sensor_id"],
+            asset_id=r["asset_id"],
+            water_level_cm=r["water_level_cm"],
+            rise_rate_cm_min=r["rise_rate_cm_min"],
+            priority_score=scored["total_risk"],
+            status=scored["status"],
+            timestamp=datetime.utcnow()
+        )
+        db.add(db_reading)
+    db.commit()
+
+    current_state = build_dashboard_state(db)
+    broadcast_dashboard_state(current_state)
+    return current_state
 
 
 # ==========================================

@@ -333,40 +333,31 @@ def seed_assets(db: Session):
 
 def seed_teams(db: Session):
     """
-    Seed municipal emergency response dispatch teams per PRD Section 9.3 & Step 4:
-    - TEAM-ALPHA: Team Alpha
-    - TEAM-BRAVO: Team Bravo
-    - TEAM-CHARLIE: Team Charlie
+    Seed municipal emergency response dispatch teams:
+    - TEAM-ALPHA: Rapid Response Team Alpha (ICU Life-Support & Flood Defense Specialist)
+    - TEAM-BETA:  Rescue Unit Beta (Bridge Arterial Corridor & Structural Specialist)
     """
     initial_teams = [
         {
             "team_id": "TEAM-ALPHA",
-            "team_name": "Team Alpha",
-            "specialty": "Rapid Flood Barrier & Inundation Defense",
+            "team_name": "Rapid Response Team Alpha",
+            "specialty": "ICU Life-Support & Inundation Defense",
             "hazard_domain": "FLOOD",
             "status": "AVAILABLE",
             "current_assignment": None
         },
         {
-            "team_id": "TEAM-BRAVO",
-            "team_name": "Team Bravo",
-            "specialty": "Bridge Structural Inspection & Pier Scour",
-            "hazard_domain": "STRUCTURAL",
-            "status": "AVAILABLE",
-            "current_assignment": None
-        },
-        {
-            "team_id": "TEAM-CHARLIE",
-            "team_name": "Team Charlie",
-            "specialty": "Rapid Emergency Response & Evacuation Unit",
+            "team_id": "TEAM-BETA",
+            "team_name": "Rescue Unit Beta",
+            "specialty": "Bridge Arterial Transit & Structural Evacuation",
             "hazard_domain": "FLOOD",
             "status": "AVAILABLE",
             "current_assignment": None
         }
     ]
 
-    # Clean up any legacy teams beyond the 3 required
-    db.query(Team).filter(Team.team_id.notin_(["TEAM-ALPHA", "TEAM-BRAVO", "TEAM-CHARLIE"])).delete(synchronize_session=False)
+    # Clean up legacy teams
+    db.query(Team).filter(Team.team_id.notin_(["TEAM-ALPHA", "TEAM-BETA"])).delete(synchronize_session=False)
 
     for item in initial_teams:
         team = db.query(Team).filter(Team.team_id == item["team_id"]).first()

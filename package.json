@@ -4,9 +4,9 @@
   "private": true,
   "description": "ORACLE Edge - Space-to-Ground Infrastructure Decision Intelligence Platform",
   "scripts": {
-    "dev": "npm run dev --prefix my-app",
-    "build": "npm run build --prefix my-app",
-    "start": "npm run start --prefix my-app",
-    "backend": "python -m uvicorn backend.main:app --reload --port 8000"
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "start": "npm run start --prefix frontend",
+    "backend": ".venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
   }
 }
