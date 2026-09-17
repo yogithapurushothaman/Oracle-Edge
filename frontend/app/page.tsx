@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import CommandCenterMap from "./components/CommandCenterMap";
 import AnimatedHeading from "./components/animations/AnimatedHeading";
-import FadeIn from "./components/animations/FadeIn";
 import {
   playCriticalAlert,
   getAudioMuted,
@@ -112,7 +111,7 @@ export default function OracleCommandCenter() {
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [isDispatched, setIsDispatched] = useState<boolean>(false);
 
-  // Modals
+  // Modal
   const [showTeamModal, setShowTeamModal] = useState<boolean>(false);
 
   // Live Backend State
@@ -146,7 +145,6 @@ export default function OracleCommandCenter() {
     status: "ASSIGNED",
   });
 
-  const [buzzer, setBuzzer] = useState<boolean>(false);
   const [criticalAssetsCount, setCriticalAssetsCount] = useState<number>(1);
   const [warningAssetsCount, setWarningAssetsCount] = useState<number>(1);
   const [populationImpact, setPopulationImpact] = useState<number>(15000);
@@ -205,7 +203,6 @@ export default function OracleCommandCenter() {
     if (data.explainable_ai) setExplainableAi(data.explainable_ai);
     if (data.resource_readiness) setResourceReadiness(data.resource_readiness);
 
-    if (typeof data.buzzer === "boolean") setBuzzer(data.buzzer);
     if (typeof data.critical_assets_count === "number") setCriticalAssetsCount(data.critical_assets_count);
     if (typeof data.warning_assets_count === "number") setWarningAssetsCount(data.warning_assets_count);
     if (typeof data.population_impact === "number") setPopulationImpact(data.population_impact);
@@ -270,8 +267,8 @@ export default function OracleCommandCenter() {
       if (resp.ok) {
         const data = await resp.json();
         applyStateUpdate(data);
-        if (stage === "scenario_1_normal" || stage === "baseline") {
-          setIsDispatched(false);
+        if (stage === "scenario_1_normal" || stage === "baseline" || stage === "scenario_5_dispatch_completed") {
+          if (stage === "scenario_1_normal") setIsDispatched(false);
         }
       }
     } catch (e) {
@@ -284,7 +281,6 @@ export default function OracleCommandCenter() {
   // Dispatch acknowledge
   const handleDispatchAction = async () => {
     setIsDispatched(true);
-    setBuzzer(false);
     await handleTriggerScenario("scenario_5_dispatch_completed");
     setShowTeamModal(false);
   };
@@ -308,662 +304,660 @@ export default function OracleCommandCenter() {
   const gaugeDashoffset = gaugeCircumference - (riskScoreClamped / 100) * gaugeCircumference;
 
   return (
-    <div className="min-h-screen text-white flex flex-col font-sans selection:bg-white selection:text-black">
+    <div className="page flex flex-col min-h-screen relative z-10 p-3 md:p-5 lg:p-6 space-y-4 max-w-[1760px] mx-auto w-full">
       {/* ===================================================================== */}
-      {/* 1. TOP NAVBAR                                                         */}
+      {/* 1. TOP HEADER (Shrink 0)                                              */}
       {/* ===================================================================== */}
-      <div className="px-6 md:px-12 lg:px-16 pt-6 sticky top-0 z-50">
-        <header className="liquid-glass rounded-xl px-5 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-          {/* Left: Animated Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shadow-lg shadow-white/5 shrink-0">
-              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none">
-                <polygon points="12 3 21 18 3 18" stroke="currentColor" strokeWidth="2" fill="rgba(255, 255, 255, 0.15)" />
-                <polygon points="12 9 17 17 7 17" stroke="#38bdf8" strokeWidth="1.5" fill="rgba(56, 189, 248, 0.4)" />
-              </svg>
+      <header className="header-anim liquid-glass px-4 py-2.5 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 shrink-0">
+        {/* Left: Circular Logo Button + Glowing Cyan Glyph + ORACLE EDGE in --font-display */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-cyan-950/80 border border-cyan-400/50 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.4)] shrink-0">
+            <svg className="w-5 h-5 text-cyan-400" viewBox="0 0 24 24" fill="none">
+              <polygon points="12 3 21 18 3 18" stroke="currentColor" strokeWidth="2" fill="rgba(6, 182, 212, 0.25)" />
+              <polygon points="12 9 17 17 7 17" stroke="#38bdf8" strokeWidth="1.5" fill="rgba(56, 189, 248, 0.5)" />
+            </svg>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span
+                className="text-base font-black tracking-wider text-white"
+                style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.04em" }}
+              >
+                ORACLE EDGE
+              </span>
+              <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                Municipal AI
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <AnimatedHeading
-                  text="ORACLE EDGE"
-                  as="h1"
-                  className="text-base font-black tracking-wider text-white"
-                />
-                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-white/10 text-gray-300 border border-white/20">
-                  Municipal AI
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-300 font-normal tracking-wide">
-                Space-to-Ground Infrastructure Decision Intelligence Platform
-              </p>
-            </div>
+            <p className="text-[11px] text-gray-300 font-normal tracking-wide">
+              Space-to-Ground Infrastructure Decision Intelligence Platform
+            </p>
+          </div>
+        </div>
+
+        {/* Center: Floating Pill Nav (Inter 500, active indicator with 3 micro-dots) */}
+        <div className="hidden lg:flex items-center gap-1 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 shadow-lg">
+          {(["Overview", "Digital Twin", "Risk Intelligence", "Dispatch"] as const).map((tab) => {
+            const tabKey = tab.toLowerCase().replace(" ", "_");
+            const isActive = activeNavTab === tabKey;
+            return (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveNavTab(tabKey);
+                  if (tab === "Dispatch") setShowTeamModal(true);
+                  if (tab === "Digital Twin") {
+                    const el = document.getElementById("digital-twin-map");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }
+                  if (tab === "Risk Intelligence") {
+                    const el = document.getElementById("risk-intelligence-workspace");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }
+                }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isActive
+                    ? "bg-white text-black font-semibold shadow-sm"
+                    : "text-gray-300 hover:text-white"
+                }`}
+              >
+                <span>{tab}</span>
+                {isActive && (
+                  <span className="flex items-center gap-0.5">
+                    <span className="w-1 h-1 rounded-full bg-cyan-600" />
+                    <span className="w-1 h-1 rounded-full bg-cyan-600" />
+                    <span className="w-1 h-1 rounded-full bg-cyan-600" />
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right: Status Badge, Quick Demonstration Buttons, User Profile Pill */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Demonstration Buttons */}
+          <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md p-1 rounded-lg border border-white/10">
+            {[
+              { id: "scenario_1_normal", label: "1: Baseline" },
+              { id: "scenario_2_rain", label: "2: Rain (12mm/hr)" },
+              { id: "scenario_3_tiebreaker", label: "3: Tie-Breaker (Both 3.5cm)" },
+              { id: "scenario_4_hospital_critical", label: "4: Critical H01" },
+              { id: "scenario_5_dispatch_completed", label: "5: Reset" },
+            ].map((stg) => (
+              <button
+                key={stg.id}
+                onClick={() => handleTriggerScenario(stg.id)}
+                disabled={isSimulating}
+                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all cursor-pointer ${
+                  activeStage === stg.id
+                    ? "bg-white text-black font-bold shadow-sm"
+                    : "text-gray-300 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                {stg.label}
+              </button>
+            ))}
           </div>
 
-          {/* Center: Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-6 text-xs font-medium text-gray-300">
-            <button
-              onClick={() => setActiveNavTab("overview")}
-              className={`hover:text-white transition-colors cursor-pointer ${
-                activeNavTab === "overview" ? "text-white font-semibold" : ""
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => {
-                setActiveNavTab("digital_twin");
-                const el = document.getElementById("digital-twin-map");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
-              }}
-              className={`hover:text-white transition-colors cursor-pointer ${
-                activeNavTab === "digital_twin" ? "text-white font-semibold" : ""
-              }`}
-            >
-              Digital Twin
-            </button>
-            <button
-              onClick={() => {
-                setActiveNavTab("risk_intel");
-                const el = document.getElementById("risk-intelligence-workspace");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
-              }}
-              className={`hover:text-white transition-colors cursor-pointer ${
-                activeNavTab === "risk_intel" ? "text-white font-semibold" : ""
-              }`}
-            >
-              Risk Intelligence
-            </button>
-            <button
-              onClick={() => {
-                setActiveNavTab("dispatch");
-                setShowTeamModal(true);
-              }}
-              className={`hover:text-white transition-colors cursor-pointer ${
-                activeNavTab === "dispatch" ? "text-white font-semibold" : ""
-              }`}
-            >
-              Dispatch
-            </button>
-          </nav>
-
-          {/* Right: Simulation Triggers, Online Status, Clock, Chip */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Quick Simulation Trigger Bar */}
-            <div className="flex items-center gap-1 bg-black/50 p-1 rounded-lg border border-white/10">
-              {[
-                { id: "scenario_1_normal", label: "1: Normal" },
-                { id: "scenario_2_rain", label: "2: Rain" },
-                { id: "scenario_3_tiebreaker", label: "3: Tie-Breaker" },
-                { id: "scenario_4_hospital_critical", label: "4: Critical H01" },
-                { id: "scenario_5_dispatch_completed", label: "5: Dispatched" },
-              ].map((stg) => (
-                <button
-                  key={stg.id}
-                  onClick={() => handleTriggerScenario(stg.id)}
-                  disabled={isSimulating}
-                  className={`px-2 py-1 text-[10px] font-medium rounded-md transition-all cursor-pointer ${
-                    activeStage === stg.id
-                      ? "bg-white text-black font-semibold shadow-sm"
-                      : "text-gray-300 hover:text-white hover:bg-white/10"
-                  }`}
-                >
-                  <span>{stg.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Online Status Badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 border border-white/10 text-xs">
-              <span className={`w-2 h-2 rounded-full ${isHardwareOnline ? "bg-emerald-400 animate-ping" : "bg-emerald-400"}`} />
-              <span className="font-medium text-white">System Online</span>
-            </div>
-
-            {/* Date / Time */}
-            <div className="hidden 2xl:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 border border-white/10 text-xs text-gray-300 font-mono">
-              <ClockIcon className="w-3.5 h-3.5 text-gray-300" />
-              <span>12 Sep 2026, 14:32</span>
-            </div>
-
-            {/* Audio Toggle */}
-            <button
-              onClick={handleToggleAudio}
-              className="p-2 rounded-lg bg-black/50 hover:bg-white/10 border border-white/10 text-gray-300 transition-all cursor-pointer"
-              title={isAudioMuted ? "Unmute Alarm" : "Mute Alarm"}
-            >
-              {isAudioMuted ? (
-                <VolumeXIcon className="w-4 h-4 text-rose-400" />
-              ) : (
-                <Volume2Icon className="w-4 h-4 text-emerald-400" />
-              )}
-            </button>
-
-            {/* Municipal Authority Dropdown Chip */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/50 border border-white/10 text-xs text-white cursor-pointer hover:border-white/30 transition-all">
-              <span className="text-sm">🏛️</span>
-              <span className="font-semibold">Municipal Authority</span>
-            </div>
+          {/* Status Badge: "● System Online" (green pulse) */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/10 text-xs">
+            <span className={`w-2 h-2 rounded-full ${isHardwareOnline ? "bg-emerald-400 animate-ping" : "bg-emerald-400"}`} />
+            <span className="font-medium text-white text-[11px]">System Online</span>
           </div>
-        </header>
-      </div>
+
+          {/* Audio Siren Toggle */}
+          <button
+            onClick={handleToggleAudio}
+            className="p-1.5 rounded-lg bg-black/60 hover:bg-white/10 border border-white/10 text-gray-300 transition-all cursor-pointer"
+            title={isAudioMuted ? "Unmute Alarm" : "Mute Alarm"}
+          >
+            {isAudioMuted ? (
+              <VolumeXIcon className="w-3.5 h-3.5 text-rose-400" />
+            ) : (
+              <Volume2Icon className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+          </button>
+
+          {/* Municipal Authority ∨ User Profile Pill */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/10 text-xs text-white cursor-pointer hover:border-white/30 transition-all">
+            <span className="text-sm">🏛️</span>
+            <span className="font-semibold text-[11px]">Municipal Authority</span>
+            <span className="text-[9px] text-gray-400">∨</span>
+          </div>
+        </div>
+      </header>
 
       {/* ===================================================================== */}
-      {/* 2. MAIN DASHBOARD CONTENT (TRANSLUCENT LIQUID-GLASS DEPTH)            */}
+      {/* 2. EXECUTIVE SUMMARY (TOP STATS ROW - 4 CARDS)                        */}
       {/* ===================================================================== */}
-      <main className="px-6 md:px-12 lg:px-16 py-6 space-y-6 max-w-[1700px] mx-auto w-full">
-        {/* =================================================================== */}
-        {/* EXECUTIVE SUMMARY (TOP STAT CARDS ROW) - FadeIn delay 600ms         */}
-        {/* =================================================================== */}
-        <FadeIn delay={600} duration={600}>
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Card 1: Critical Assets */}
-            <div className="liquid-glass rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                  Critical Assets
-                </span>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-white font-mono">{criticalAssetsCount}</span>
-                  <span className="text-xs font-semibold text-rose-400">(Immediate Action)</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 flex items-center justify-center text-rose-500 shrink-0">
-                <svg className="w-11 h-11" viewBox="0 0 100 100" fill="currentColor">
-                  <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="4" />
-                  <text x="50" y="60" textAnchor="middle" fontSize="32" fontWeight="900" fill="#ef4444">!</text>
-                </svg>
-              </div>
-            </div>
-
-            {/* Card 2: Warning Assets */}
-            <div className="liquid-glass rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                  Warning Assets
-                </span>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-white font-mono">{warningAssetsCount}</span>
-                  <span className="text-xs font-semibold text-amber-400">(Monitor)</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 flex items-center justify-center text-amber-400 shrink-0">
-                <svg className="w-11 h-11" viewBox="0 0 100 100" fill="currentColor">
-                  <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth="4" />
-                  <text x="50" y="60" textAnchor="middle" fontSize="30" fontWeight="900" fill="#f59e0b">▲</text>
-                </svg>
-              </div>
-            </div>
-
-            {/* Card 3: Population Impact */}
-            <div className="liquid-glass rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                  Population Impact
-                </span>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-white font-mono">{populationImpact.toLocaleString()}</span>
-                  <span className="text-xs font-semibold text-gray-300">(Estimated)</span>
-                </div>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0 shadow-lg shadow-blue-500/10">
-                <ShieldIcon className="w-6 h-6" />
-              </div>
-            </div>
-
-            {/* Card 4: Active Nodes */}
-            <div className="liquid-glass rounded-2xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-300">
-                  Active Nodes
-                </span>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-white font-mono">{activeNodesCount}/2</span>
-                  <span className="text-xs font-semibold text-emerald-400">(Online)</span>
-                </div>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/10">
-                <CheckCircle2Icon className="w-6 h-6" />
-              </div>
-            </div>
-          </section>
-        </FadeIn>
-
-        {/* =================================================================== */}
-        {/* CENTER WORKSPACE (DIGITAL TWIN & LIVE INTEL) - FadeIn delay 800ms   */}
-        {/* =================================================================== */}
-        <FadeIn delay={800} duration={600}>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Hero: City Digital Twin - Live View (7 cols) */}
-            <div id="digital-twin-map" className="lg:col-span-7 liquid-glass rounded-2xl p-4 flex flex-col">
-              <CommandCenterMap
-                assets={assets}
-                selectedAssetId={selectedAssetId}
-                onSelectAsset={setSelectedAssetId}
-              />
-            </div>
-
-            {/* Right Panels (5 cols) */}
-            <div className="lg:col-span-5 flex flex-col gap-4">
-              {/* Top Row of Right Panels: Weather & Dispatch */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Live Weather (Open-Meteo) */}
-                <div className="liquid-glass rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold uppercase text-gray-300">Live Weather (Open-Meteo)</span>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-gray-300 border border-white/20">LIVE</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">🌧️</span>
-                    <div>
-                      <div className="text-xl font-bold text-white">{Math.round(weather.temperature_c)}°C</div>
-                      <div className="text-xs text-gray-300">{weather.condition}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 pt-2 border-t border-white/10 text-center">
-                    <div className="recessed-well p-1.5">
-                      <span className="text-[9px] text-gray-400 block">Rainfall</span>
-                      <span className="text-xs font-bold text-white font-mono">{weather.rainfall_rate_mm_hr} mm/h</span>
-                    </div>
-                    <div className="recessed-well p-1.5">
-                      <span className="text-[9px] text-gray-400 block">Wind</span>
-                      <span className="text-xs font-bold text-white font-mono">{weather.wind_speed_kmh} km/h</span>
-                    </div>
-                    <div className="recessed-well p-1.5">
-                      <span className="text-[9px] text-gray-400 block">Humidity</span>
-                      <span className="text-xs font-bold text-white font-mono">{weather.humidity_pct}%</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dispatch Recommendation (Red Beacon Glow) */}
-                <div className="liquid-glass rounded-2xl p-4 border border-rose-500/40 shadow-[0_0_25px_rgba(239,68,68,0.2)] flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold uppercase text-rose-300 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                        Dispatch Directive
-                      </span>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                        ETA 12m
-                      </span>
-                    </div>
-                    <h4 className="text-sm font-bold text-white">{resourceReadiness.team_name}</h4>
-                    <p className="text-[11px] text-gray-300 mt-1">
-                      Target: <strong className="text-white">{resourceReadiness.assigned_target}</strong>
-                    </p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{resourceReadiness.equipment}</p>
-                  </div>
-                  <button
-                    onClick={() => setShowTeamModal(true)}
-                    className="mt-3 w-full btn-liquid text-xs py-1.5 flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <span>{isDispatched ? "✓ Dispatched (View)" : "Deploy Action →"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Live Sensor Data (Dual Telemetry Tiles with recessed wells) */}
-              <div className="liquid-glass rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase text-gray-300">Live Dual-Node Telemetry</span>
-                    <span className="text-[10px] font-mono text-gray-400">(ESP32 Dual Sensor)</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-400 font-medium">● Streaming Active</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Node 1: H01 Metro Hospital */}
-                  <div className="recessed-well p-3 flex flex-col justify-between">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-white flex items-center gap-1">
-                          🏥 Metro Hospital (H01)
-                        </span>
-                        <span className="text-[10px] text-gray-400">Sensor Pin 36 (VP)</span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          h01.status === "CRITICAL"
-                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse"
-                            : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                        }`}
-                      >
-                        {h01.status}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                      <div>
-                        <span className="text-2xl font-black text-white font-mono">
-                          {h01.water_level_cm.toFixed(1)}
-                        </span>
-                        <span className="text-xs text-gray-400 ml-1">cm</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-gray-400 block">Rise Rate</span>
-                        <span className="text-xs font-mono text-rose-400 font-bold">
-                          +{h01.rise_rate_cm_min.toFixed(1)} cm/min
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[10px] text-gray-400 flex items-center justify-between border-t border-white/5 pt-1.5">
-                      <span>
-                        Risk: <strong className="text-rose-400">{Math.round(h01.risk_score)}</strong>/100
-                      </span>
-                      <span>
-                        Priority: <strong className="text-white">#1</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Node 2: B17 River Bridge */}
-                  <div className="recessed-well p-3 flex flex-col justify-between">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-white flex items-center gap-1">
-                          🌉 River Bridge (B17)
-                        </span>
-                        <span className="text-[10px] text-gray-400">Sensor Pin 32</span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          b17.status === "CRITICAL"
-                            ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
-                            : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                        }`}
-                      >
-                        {b17.status}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-baseline justify-between">
-                      <div>
-                        <span className="text-2xl font-black text-white font-mono">
-                          {b17.water_level_cm.toFixed(1)}
-                        </span>
-                        <span className="text-xs text-gray-400 ml-1">cm</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-gray-400 block">Rise Rate</span>
-                        <span className="text-xs font-mono text-amber-400 font-bold">
-                          +{b17.rise_rate_cm_min.toFixed(1)} cm/min
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[10px] text-gray-400 flex items-center justify-between border-t border-white/5 pt-1.5">
-                      <span>
-                        Risk: <strong className="text-amber-400">{Math.round(b17.risk_score)}</strong>/100
-                      </span>
-                      <span>
-                        Priority: <strong className="text-white">#2</strong>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Priority Ranking & Incident Timeline */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Priority Ranking Board */}
-                <div id="priority-ranking-board" className="liquid-glass rounded-2xl p-4 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold uppercase text-gray-300">Priority Ranking</span>
-                      <span className="text-[10px] text-gray-400 font-mono">Tie-Breaker Active</span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="recessed-well p-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-xs">
-                            1
-                          </span>
-                          <span className="text-xs font-bold text-white">🏥 Metro Hospital (H01)</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-mono font-bold text-rose-400">92</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400">
-                            CRITICAL
-                          </span>
-                        </div>
-                      </div>
-                      <div className="recessed-well p-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                            2
-                          </span>
-                          <span className="text-xs font-bold text-white">🌉 River Bridge (B17)</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-mono font-bold text-amber-400">76</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                            HIGH
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 p-2 rounded-lg bg-black/40 border border-white/10 text-[10px] text-gray-300">
-                    <strong>Tie-Breaker:</strong> Both nodes at 3.5 cm. H01 prioritized due to 120 ICU beds and zero evacuation tolerance.
-                  </div>
-                </div>
-
-                {/* Incident Timeline Stepper */}
-                <div className="liquid-glass rounded-2xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold uppercase text-gray-300">Incident Timeline</span>
-                    <span className="text-[10px] text-gray-400 font-mono">UTC +05:30</span>
-                  </div>
-                  <div className="space-y-2">
-                    {timeline.slice(0, 3).map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-xs">
-                        <span className="font-mono text-[10px] text-gray-400 shrink-0 mt-0.5">{item.time}</span>
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                            item.severity === "CRITICAL"
-                              ? "bg-rose-500 animate-ping"
-                              : item.severity === "DISPATCHED"
-                              ? "bg-emerald-400"
-                              : "bg-amber-400"
-                          }`}
-                        />
-                        <div className="min-w-0">
-                          <p className="font-bold text-white text-[11px] leading-tight truncate">{item.event}</p>
-                          <p className="text-[10px] text-gray-400 leading-tight truncate">{item.detail}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+      <section className="anim grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" style={{ "--d": "0.1s" } as React.CSSProperties}>
+        {/* Card 1: Critical Assets */}
+        <div className="liquid-glass p-3.5 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+              Critical Assets
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className="text-2xl font-black text-white"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {criticalAssetsCount}
+              </span>
+              <span className="text-[11px] font-bold text-rose-400">(Immediate Action)</span>
             </div>
           </div>
-        </FadeIn>
+          <div className="w-10 h-10 flex items-center justify-center text-rose-500 shrink-0">
+            <svg className="w-9 h-9" viewBox="0 0 100 100" fill="currentColor">
+              <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth="4" />
+              <text x="50" y="60" textAnchor="middle" fontSize="32" fontWeight="900" fill="#ef4444">!</text>
+            </svg>
+          </div>
+        </div>
 
-        {/* =================================================================== */}
-        {/* BOTTOM ANALYTICS WORKSPACE - FadeIn delay 1000ms                    */}
-        {/* =================================================================== */}
-        <FadeIn delay={1000} duration={600}>
-          <section id="risk-intelligence-workspace" className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Asset Details Breakdown (4 cols) */}
-            <div className="lg:col-span-4 liquid-glass rounded-2xl p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase text-gray-300">Asset Profile Registry</span>
-                <span className="text-[10px] text-gray-400 font-mono">Layer 3 Digital Twin</span>
+        {/* Card 2: Warning Assets */}
+        <div className="liquid-glass p-3.5 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+              Warning Assets
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className="text-2xl font-black text-white"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {warningAssetsCount}
+              </span>
+              <span className="text-[11px] font-bold text-amber-400">(Monitor)</span>
+            </div>
+          </div>
+          <div className="w-10 h-10 flex items-center justify-center text-amber-400 shrink-0">
+            <svg className="w-9 h-9" viewBox="0 0 100 100" fill="currentColor">
+              <polygon points="50,5 90,27.5 90,72.5 50,95 10,72.5 10,27.5" fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth="4" />
+              <text x="50" y="60" textAnchor="middle" fontSize="30" fontWeight="900" fill="#f59e0b">▲</text>
+            </svg>
+          </div>
+        </div>
+
+        {/* Card 3: Population Impact */}
+        <div className="liquid-glass p-3.5 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+              Population Impact
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className="text-2xl font-black text-white"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {populationImpact.toLocaleString()}
+              </span>
+              <span className="text-[11px] font-bold text-blue-300">(Estimated)</span>
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0 shadow-lg shadow-blue-500/10">
+            <ShieldIcon className="w-5 h-5" />
+          </div>
+        </div>
+
+        {/* Card 4: Active Nodes */}
+        <div className="liquid-glass p-3.5 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+              Active Nodes
+            </span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span
+                className="text-2xl font-black text-white"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {activeNodesCount}/2
+              </span>
+              <span className="text-[11px] font-bold text-emerald-400">(Online)</span>
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/10">
+            <CheckCircle2Icon className="w-5 h-5" />
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 3. CENTRAL WORKSPACE (DIGITAL TWIN & LIVE INTEL)                      */}
+      {/* ===================================================================== */}
+      <section className="anim grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" style={{ "--d": "0.2s" } as React.CSSProperties}>
+        {/* Center-Left Hero: City Digital Twin - Live View (7 cols) */}
+        <div id="digital-twin-map" className="lg:col-span-7 liquid-glass p-3 flex flex-col">
+          <CommandCenterMap
+            assets={assets}
+            selectedAssetId={selectedAssetId}
+            onSelectAsset={setSelectedAssetId}
+          />
+        </div>
+
+        {/* Center-Right & Far-Right Modules (5 cols) */}
+        <div className="lg:col-span-5 flex flex-col gap-3.5">
+          {/* Top Row: Live Weather & Dispatch Recommendation */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* Live Weather (Open-Meteo) */}
+            <div className="liquid-glass p-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold uppercase text-gray-300">Live Weather (Open-Meteo)</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-gray-300 border border-white/20">LIVE</span>
               </div>
-
-              <div className="recessed-well p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">🏥 Metro Hospital (H01)</span>
-                  <span className="text-[10px] font-bold text-rose-400">Criticality: 10/10</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-300">
-                  <div>
-                    Pop: <strong className="text-white">{h01.population_served?.toLocaleString()}</strong>
-                  </div>
-                  <div>
-                    ICU Beds: <strong className="text-white">{h01.icu_beds || 120}</strong>
-                  </div>
-                  <div>
-                    Evacuation: <strong className="text-rose-300">{h01.evacuation_tolerance || "Zero"}</strong>
-                  </div>
-                  <div>
-                    Basin: <strong className="text-white">{h01.elevation_risk || "Depression Basin"}</strong>
-                  </div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🌧️</span>
+                <div>
+                  <div className="text-lg font-black text-white font-mono">{Math.round(weather.temperature_c)}°C</div>
+                  <div className="text-[11px] text-gray-300">{weather.condition}</div>
                 </div>
               </div>
-
-              <div className="recessed-well p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">🌉 River Bridge (B17)</span>
-                  <span className="text-[10px] font-bold text-amber-400">Criticality: 6/10</span>
+              <div className="mt-2.5 grid grid-cols-3 gap-1.5 pt-2 border-t border-white/10 text-center">
+                <div className="neumorphic-well p-1">
+                  <span className="text-[8px] text-gray-400 block">Rainfall</span>
+                  <span className="text-[11px] font-black text-white font-mono">{weather.rainfall_rate_mm_hr} mm/h</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-300">
-                  <div>
-                    Daily Traffic: <strong className="text-white">{b17.daily_traffic?.toLocaleString() || "8,000"}</strong>
-                  </div>
-                  <div>
-                    Alt Route: <strong className="text-white">{b17.alternate_route || "No"}</strong>
-                  </div>
-                  <div>
-                    Elevation: <strong className="text-white">{b17.elevation_risk || "Channel Flow"}</strong>
-                  </div>
-                  <div>
-                    Water: <strong className="text-white">{b17.water_level_cm.toFixed(1)} cm</strong>
-                  </div>
+                <div className="neumorphic-well p-1">
+                  <span className="text-[8px] text-gray-400 block">Wind</span>
+                  <span className="text-[11px] font-black text-white font-mono">{weather.wind_speed_kmh} km/h</span>
+                </div>
+                <div className="neumorphic-well p-1">
+                  <span className="text-[8px] text-gray-400 block">Humidity</span>
+                  <span className="text-[11px] font-black text-white font-mono">{weather.humidity_pct}%</span>
                 </div>
               </div>
             </div>
 
-            {/* Explainable AI - "Why H01?" (4 cols) */}
-            <div className="lg:col-span-4 liquid-glass rounded-2xl p-5 flex flex-col justify-between">
+            {/* Dispatch Recommendation (Red emergency beacon border) */}
+            <div className="liquid-glass p-3.5 border border-rose-500/50 shadow-[0_0_20px_rgba(239,68,68,0.25)] flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold uppercase text-gray-300">Explainable AI — "Why H01?"</span>
-                  <span className="text-[10px] text-gray-400 font-mono">SHAP Weights</span>
-                </div>
-
-                <div className="flex items-center gap-4 mb-4">
-                  {/* Circular Risk Score Gauge */}
-                  <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
-                    <svg className="w-20 h-20 -rotate-90">
-                      <circle
-                        cx="40"
-                        cy="40"
-                        r={gaugeRadius}
-                        fill="transparent"
-                        stroke="rgba(255,255,255,0.1)"
-                        strokeWidth="6"
-                      />
-                      <circle
-                        cx="40"
-                        cy="40"
-                        r={gaugeRadius}
-                        fill="transparent"
-                        stroke="#ef4444"
-                        strokeWidth="6"
-                        strokeDasharray={gaugeCircumference}
-                        strokeDashoffset={gaugeDashoffset}
-                        strokeLinecap="round"
-                        className="transition-all duration-700 ease-out"
-                      />
-                    </svg>
-                    <div className="absolute flex flex-col items-center justify-center">
-                      <span className="text-lg font-black text-white font-mono">
-                        {Math.round(explainableAi.risk_score)}
-                      </span>
-                      <span className="text-[8px] uppercase text-gray-400 font-bold">Risk</span>
-                    </div>
-                  </div>
-
-                  {/* Factor Breakdown Bars */}
-                  <div className="flex-1 space-y-1.5 text-[10px]">
-                    {Object.entries(explainableAi.factor_breakdown).map(([factor, weight]) => (
-                      <div key={factor}>
-                        <div className="flex justify-between text-gray-300 mb-0.5">
-                          <span>{factor}</span>
-                          <span className="font-mono text-white font-semibold">{weight}%</span>
-                        </div>
-                        <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className="bg-white h-1.5 rounded-full transition-all duration-500"
-                            style={{ width: `${weight * 2.5}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Decision Rationale Callout */}
-              <div className="recessed-well p-3 text-[11px] text-gray-300 leading-relaxed border-l-2 border-l-rose-500">
-                <strong className="text-white block mb-1">Decision Rationale:</strong>
-                "{explainableAi.rationale}"
-              </div>
-            </div>
-
-            {/* Resource & Team Readiness + Recent Alerts Feed (4 cols) */}
-            <div className="lg:col-span-4 liquid-glass rounded-2xl p-5 flex flex-col justify-between gap-4">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold uppercase text-gray-300">Resource Readiness</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                    {resourceReadiness.status}
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold uppercase text-rose-300 flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                    Dispatch Directive
+                  </span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    ETA 12m
                   </span>
                 </div>
+                <h4 className="text-xs font-bold text-white">{resourceReadiness.team_name}</h4>
+                <p className="text-[10px] text-gray-300 mt-0.5">
+                  Target: <strong className="text-white">{resourceReadiness.assigned_target}</strong>
+                </p>
+                <p className="text-[9px] text-gray-400 mt-0.5 truncate">{resourceReadiness.equipment}</p>
+              </div>
+              <button
+                onClick={() => setShowTeamModal(true)}
+                className="mt-2 w-full btn-liquid text-[11px] py-1 flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <span>{isDispatched ? "✓ Dispatched (View)" : "View Team Details →"}</span>
+              </button>
+            </div>
+          </div>
 
-                <div className="recessed-well p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">{resourceReadiness.team_name}</span>
-                    <span className="text-[11px] font-mono text-gray-300">{resourceReadiness.members_count} Personnel</span>
+          {/* Live Sensor Data: Dual .neumorphic-well telemetry tiles for H01 and B17 */}
+          <div className="liquid-glass p-3.5">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold uppercase text-gray-300">Live Sensor Data</span>
+                <span className="text-[9px] font-mono text-gray-400">(Dual ESP32 Telemetry)</span>
+              </div>
+              <span className="text-[9px] text-emerald-400 font-medium">● Streaming Active</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {/* Node 1: H01 Metro Hospital */}
+              <div className="neumorphic-well p-2.5 flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-white flex items-center gap-1">
+                      🏥 Metro Hospital (H01)
+                    </span>
+                    <span className="text-[9px] text-gray-400">Sensor Pin 36 (VP)</span>
                   </div>
-                  <p className="text-[11px] text-gray-300">
-                    Assigned: <strong className="text-white">{resourceReadiness.assigned_target}</strong>
-                  </p>
-                  <p className="text-[10px] text-gray-400">Kit: {resourceReadiness.equipment}</p>
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Target ETA</span>
-                    <span className="font-bold text-emerald-400 font-mono">{resourceReadiness.eta_minutes} mins</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                      h01.status === "CRITICAL"
+                        ? "bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse"
+                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                    }`}
+                  >
+                    {h01.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <div>
+                    <span className="text-xl font-black text-white font-mono">
+                      {h01.water_level_cm.toFixed(1)}
+                    </span>
+                    <span className="text-[10px] text-gray-400 ml-1">cm</span>
                   </div>
+                  <div className="text-right">
+                    <span className="text-[8px] text-gray-400 block">Rise Rate</span>
+                    <span className="text-[10px] font-mono text-rose-400 font-bold">
+                      +{h01.rise_rate_cm_min.toFixed(1)} cm/min
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1.5 text-[9px] text-gray-400 flex items-center justify-between border-t border-white/5 pt-1">
+                  <span>
+                    Risk: <strong className="text-rose-400">{Math.round(h01.risk_score)}</strong>/100
+                  </span>
+                  <span>
+                    Priority: <strong className="text-white">#1</strong>
+                  </span>
                 </div>
               </div>
 
-              {/* Recent Alerts Feed */}
-              <div>
-                <span className="text-xs font-semibold uppercase text-gray-300 block mb-2">Recent Alerts Feed</span>
-                <div className="space-y-1.5 max-h-[110px] overflow-y-auto pr-1">
-                  {timeline.map((item, idx) => (
-                    <div key={idx} className="recessed-well p-2 flex items-center justify-between text-[10px]">
-                      <span className="text-gray-300 truncate max-w-[200px]">{item.event}</span>
-                      <span className="font-mono text-gray-400">{item.time}</span>
-                    </div>
-                  ))}
+              {/* Node 2: B17 River Bridge */}
+              <div className="neumorphic-well p-2.5 flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-white flex items-center gap-1">
+                      🌉 River Bridge (B17)
+                    </span>
+                    <span className="text-[9px] text-gray-400">Sensor Pin 32</span>
+                  </div>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                      b17.status === "CRITICAL"
+                        ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                    }`}
+                  >
+                    {b17.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <div>
+                    <span className="text-xl font-black text-white font-mono">
+                      {b17.water_level_cm.toFixed(1)}
+                    </span>
+                    <span className="text-[10px] text-gray-400 ml-1">cm</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[8px] text-gray-400 block">Rise Rate</span>
+                    <span className="text-[10px] font-mono text-amber-400 font-bold">
+                      +{b17.rise_rate_cm_min.toFixed(1)} cm/min
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1.5 text-[9px] text-gray-400 flex items-center justify-between border-t border-white/5 pt-1">
+                  <span>
+                    Risk: <strong className="text-amber-400">{Math.round(b17.risk_score)}</strong>/100
+                  </span>
+                  <span>
+                    Priority: <strong className="text-white">#2</strong>
+                  </span>
                 </div>
               </div>
             </div>
-          </section>
-        </FadeIn>
-      </main>
+          </div>
+
+          {/* Far-Right Middle: Priority Ranking & Incident Timeline */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* Priority Ranking Table */}
+            <div id="priority-ranking-board" className="liquid-glass p-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold uppercase text-gray-300">Priority Ranking</span>
+                  <span className="text-[9px] text-gray-400 font-mono">Tie-Breaker Active</span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="neumorphic-well p-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-[10px]">
+                        1
+                      </span>
+                      <span className="text-[10px] font-bold text-white">🏥 Metro Hospital (H01)</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-mono font-bold text-rose-400">92</span>
+                      <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-500/20 text-rose-400">
+                        CRITICAL
+                      </span>
+                    </div>
+                  </div>
+                  <div className="neumorphic-well p-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-[10px]">
+                        2
+                      </span>
+                      <span className="text-[10px] font-bold text-white">🌉 River Bridge (B17)</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-mono font-bold text-amber-400">76</span>
+                      <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-amber-500/20 text-amber-400">
+                        HIGH
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 p-1.5 rounded bg-black/40 border border-white/10 text-[9px] text-gray-300">
+                <strong>Tie-Breaker:</strong> Both nodes at 3.5 cm. H01 prioritized due to ICU beds & zero evacuation tolerance.
+              </div>
+            </div>
+
+            {/* Incident Timeline Stepper */}
+            <div className="liquid-glass p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-bold uppercase text-gray-300">Incident Timeline</span>
+                <span className="text-[9px] text-gray-400 font-mono">UTC +05:30</span>
+              </div>
+              <div className="space-y-1.5">
+                {timeline.slice(0, 3).map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-1.5 text-xs">
+                    <span className="font-mono text-[9px] text-gray-400 shrink-0 mt-0.5">{item.time}</span>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                        item.severity === "CRITICAL"
+                          ? "bg-rose-500 animate-ping"
+                          : item.severity === "DISPATCHED"
+                          ? "bg-emerald-400"
+                          : "bg-amber-400"
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-bold text-white text-[10px] leading-tight truncate">{item.event}</p>
+                      <p className="text-[9px] text-gray-400 leading-tight truncate">{item.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ===================================================================== */}
-      {/* 3. DISPATCH CONFIRMATION & TEAM MODAL                                 */}
+      {/* 4. BOTTOM ANALYTICS ROW                                               */}
+      {/* ===================================================================== */}
+      <section id="risk-intelligence-workspace" className="anim grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" style={{ "--d": "0.3s" } as React.CSSProperties}>
+        {/* Asset Details (4 cols) */}
+        <div className="lg:col-span-4 liquid-glass p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase text-gray-300">Asset Profile Registry</span>
+            <span className="text-[9px] text-gray-400 font-mono">Layer 3 Digital Twin</span>
+          </div>
+
+          <div className="neumorphic-well p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-white">🏥 Metro Hospital (H01)</span>
+              <span className="text-[9px] font-bold text-rose-400">Criticality: 10/10</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-300">
+              <div>
+                Pop: <strong className="text-white">{h01.population_served?.toLocaleString()}</strong>
+              </div>
+              <div>
+                ICU Beds: <strong className="text-white">{h01.icu_beds || 120}</strong>
+              </div>
+              <div>
+                Evacuation: <strong className="text-rose-300">{h01.evacuation_tolerance || "Zero"}</strong>
+              </div>
+              <div>
+                Basin: <strong className="text-white">{h01.elevation_risk || "Depression Basin"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="neumorphic-well p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-white">🌉 River Bridge (B17)</span>
+              <span className="text-[9px] font-bold text-amber-400">Criticality: 6/10</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-300">
+              <div>
+                Daily Traffic: <strong className="text-white">{b17.daily_traffic?.toLocaleString() || "8,000"}</strong>
+              </div>
+              <div>
+                Alt Route: <strong className="text-white">{b17.alternate_route || "No"}</strong>
+              </div>
+              <div>
+                Elevation: <strong className="text-white">{b17.elevation_risk || "Channel Flow"}</strong>
+              </div>
+              <div>
+                Water: <strong className="text-white">{b17.water_level_cm.toFixed(1)} cm</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Explainable AI - "Why H01?" (.liquid-glass container, 4 cols) */}
+        <div className="lg:col-span-4 liquid-glass p-4 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-bold uppercase text-gray-300">Explainable AI — "Why H01?"</span>
+              <span className="text-[9px] text-gray-400 font-mono">SHAP Weights</span>
+            </div>
+
+            <div className="flex items-center gap-3.5 mb-3">
+              {/* Circular Radial Gauge */}
+              <div className="relative w-18 h-18 shrink-0 flex items-center justify-center">
+                <svg className="w-18 h-18 -rotate-90">
+                  <circle
+                    cx="36"
+                    cy="36"
+                    r={gaugeRadius}
+                    fill="transparent"
+                    stroke="rgba(255,255,255,0.1)"
+                    strokeWidth="5"
+                  />
+                  <circle
+                    cx="36"
+                    cy="36"
+                    r={gaugeRadius}
+                    fill="transparent"
+                    stroke="#ef4444"
+                    strokeWidth="5"
+                    strokeDasharray={gaugeCircumference}
+                    strokeDashoffset={gaugeDashoffset}
+                    strokeLinecap="round"
+                    className="transition-all duration-700 ease-out"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center">
+                  <span
+                    className="text-base font-black text-white"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {Math.round(explainableAi.risk_score)}
+                  </span>
+                  <span className="text-[8px] uppercase text-gray-400 font-bold">Risk</span>
+                </div>
+              </div>
+
+              {/* Factor Contribution Bars */}
+              <div className="flex-1 space-y-1 text-[9px]">
+                {Object.entries(explainableAi.factor_breakdown).map(([factor, weight]) => (
+                  <div key={factor}>
+                    <div className="flex justify-between text-gray-300 mb-0.5">
+                      <span>{factor}</span>
+                      <span className="font-mono text-white font-semibold">{weight}%</span>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
+                      <div
+                        className="bg-white h-1 rounded-full transition-all duration-500"
+                        style={{ width: `${weight * 2.5}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Rationale Box */}
+          <div className="neumorphic-well p-2.5 text-[10px] text-gray-300 leading-relaxed border-l-2 border-l-rose-500">
+            <strong className="text-white block mb-0.5">Decision Rationale:</strong>
+            "{explainableAi.rationale}"
+          </div>
+        </div>
+
+        {/* Resource & Team Readiness + Recent Alerts (4 cols) */}
+        <div className="lg:col-span-4 liquid-glass p-4 flex flex-col justify-between gap-3">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold uppercase text-gray-300">Resource & Team Readiness</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                {resourceReadiness.status}
+              </span>
+            </div>
+
+            <div className="neumorphic-well p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-white">{resourceReadiness.team_name}</span>
+                <span className="text-[10px] font-mono text-gray-300">{resourceReadiness.members_count} Personnel</span>
+              </div>
+              <p className="text-[10px] text-gray-300">
+                Assigned: <strong className="text-white">{resourceReadiness.assigned_target}</strong>
+              </p>
+              <p className="text-[9px] text-gray-400">Kit: {resourceReadiness.equipment}</p>
+              <div className="pt-1.5 border-t border-white/10 flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">Target ETA</span>
+                <span className="font-bold text-emerald-400 font-mono">{resourceReadiness.eta_minutes} mins</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Alerts Feed */}
+          <div>
+            <span className="text-[11px] font-bold uppercase text-gray-300 block mb-1.5">Recent Alerts Feed</span>
+            <div className="space-y-1 max-h-[90px] overflow-y-auto pr-1">
+              {timeline.map((item, idx) => (
+                <div key={idx} className="neumorphic-well p-1.5 flex items-center justify-between text-[9px]">
+                  <span className="text-gray-300 truncate max-w-[210px]">{item.event}</span>
+                  <span className="font-mono text-gray-400">{item.time}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 5. EMERGENCY DISPATCH DIRECTIVE MODAL                                 */}
       {/* ===================================================================== */}
       {showTeamModal && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in">
-          <div className="liquid-glass rounded-2xl max-w-md w-full p-6 border border-white/20 shadow-2xl relative">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in">
+          <div className="liquid-glass rounded-2xl max-w-md w-full p-5 border border-white/20 shadow-2xl relative">
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-                <h3 className="text-base font-bold text-white">Emergency Dispatch Directive</h3>
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                <h3 className="text-sm font-bold text-white">Emergency Dispatch Directive</h3>
               </div>
               <button
                 onClick={() => setShowTeamModal(false)}
-                className="text-gray-400 hover:text-white text-lg font-bold cursor-pointer"
+                className="text-gray-400 hover:text-white text-base font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-gray-300">
-              <div className="recessed-well p-3 space-y-1.5">
+            <div className="space-y-2.5 text-xs text-gray-300">
+              <div className="neumorphic-well p-3 space-y-1.5">
                 <div className="flex justify-between">
                   <span className="text-gray-400">Assigned Unit:</span>
                   <strong className="text-white">{resourceReadiness.team_name}</strong>
@@ -986,21 +980,21 @@ export default function OracleCommandCenter() {
                 </div>
               </div>
 
-              <p className="text-[11px] text-gray-400 italic">
+              <p className="text-[10px] text-gray-400 italic">
                 Notice: Executing this dispatch will notify the municipal field radio, silence station sirens, and log deployment telemetry to municipal incident records.
               </p>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-3">
+            <div className="mt-5 flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setShowTeamModal(false)}
-                className="px-4 py-2 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDispatchAction}
-                className="btn-liquid text-xs py-2 px-4 flex items-center gap-1.5 bg-rose-600 hover:bg-white hover:text-black border border-rose-500 font-bold"
+                className="btn-liquid text-xs py-1.5 px-3.5 flex items-center gap-1.5 bg-rose-600 hover:bg-white hover:text-black border border-rose-500 font-bold"
               >
                 <span>Confirm & Dispatch Alpha</span>
                 <span>🚀</span>
