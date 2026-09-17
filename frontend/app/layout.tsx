@@ -36,11 +36,11 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body className="min-h-full flex flex-col font-sans bg-black text-white antialiased selection:bg-cyan-500 selection:text-black overflow-x-hidden relative">
+      <body className="min-h-full flex flex-col font-sans text-white antialiased selection:bg-cyan-500 selection:text-black overflow-x-hidden">
         {/* 1. Full-viewport cover video behind all UI */}
-        <div className="bg fixed inset-0 overflow-hidden bg-black z-0 pointer-events-none">
+        <div className="fixed inset-0 w-full h-full overflow-hidden bg-black -z-20 pointer-events-none">
           <video
-            className="bg-video absolute inset-0 w-full h-full object-cover pointer-events-none"
+            className="w-full h-full object-cover opacity-90 pointer-events-none"
             autoPlay
             muted
             loop
@@ -53,12 +53,12 @@ export default function RootLayout({
           </video>
         </div>
 
-        {/* 2. Ambient Dark Radial Scrim (Contrast & Legibility Shield) */}
+        {/* 2. Lightened Ambient Radial Scrim (Video Details Show Through) */}
         <div
-          className="legibility-shield fixed inset-0 pointer-events-none z-[1]"
+          className="legibility-shield fixed inset-0 pointer-events-none -z-10"
           style={{
             background:
-              "radial-gradient(circle at 50% 15%, rgba(15, 43, 72, 0.75) 0%, rgba(8, 22, 40, 0.88) 40%, rgba(3, 10, 20, 0.96) 100%)",
+              "radial-gradient(circle at 50% 15%, rgba(15, 43, 72, 0.25) 0%, rgba(8, 22, 40, 0.45) 50%, rgba(3, 10, 20, 0.7) 100%)",
           }}
         />
 

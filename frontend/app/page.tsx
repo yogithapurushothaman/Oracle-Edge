@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import CommandCenterMap from "./components/CommandCenterMap";
 import AnimatedHeading from "./components/animations/AnimatedHeading";
+import Sidebar from "./components/Sidebar";
 import {
   playCriticalAlert,
   getAudioMuted,
@@ -304,7 +305,7 @@ export default function OracleCommandCenter() {
   const gaugeDashoffset = gaugeCircumference - (riskScoreClamped / 100) * gaugeCircumference;
 
   return (
-    <div className="page flex flex-col min-h-screen relative z-10 p-3 md:p-5 lg:p-6 space-y-4 max-w-[1760px] mx-auto w-full">
+    <div className="page flex flex-col min-h-screen relative z-10 p-3 md:p-4 lg:p-5 space-y-4 max-w-[1920px] mx-auto w-full">
       {/* ===================================================================== */}
       {/* 1. TOP HEADER (Shrink 0)                                              */}
       {/* ===================================================================== */}
@@ -427,6 +428,55 @@ export default function OracleCommandCenter() {
           </div>
         </div>
       </header>
+
+      {/* ===================================================================== */}
+      {/* WORKSPACE ROW: Left Sidebar Navigation + Main Dashboard Content Area */}
+      {/* ===================================================================== */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start w-full flex-1">
+        {/* RESTORED LEFT SIDEBAR NAVIGATION */}
+        <Sidebar
+          activeTab={activeNavTab}
+          onSelectTab={(tab) => {
+            setActiveNavTab(tab);
+            if (tab === "dashboard") {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            } else if (tab === "map") {
+              const el = document.getElementById("digital-twin-map");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (tab === "assets") {
+              const el = document.getElementById("asset-profile-registry");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (tab === "risk") {
+              const el = document.getElementById("explainable-ai-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (tab === "priority") {
+              const el = document.getElementById("priority-ranking-board");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (tab === "dispatch") {
+              setShowTeamModal(true);
+            } else if (tab === "timeline") {
+              const el = document.getElementById("incident-timeline");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (tab === "reports") {
+              window.print();
+            }
+          }}
+          onQuickAction={(act) => {
+            if (act === "priority") {
+              const el = document.getElementById("priority-ranking-board");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            } else if (act === "teams") {
+              setShowTeamModal(true);
+            } else if (act === "report") {
+              window.print();
+            }
+          }}
+          criticalAlertsCount={criticalAssetsCount}
+          isConnected={isHardwareOnline}
+        />
+
+        {/* MAIN DASHBOARD CONTENT AREA */}
+        <main className="flex-1 flex flex-col space-y-4 min-w-0 w-full">
 
       {/* ===================================================================== */}
       {/* 2. EXECUTIVE SUMMARY (TOP STATS ROW - 4 CARDS)                        */}
@@ -741,7 +791,7 @@ export default function OracleCommandCenter() {
             </div>
 
             {/* Incident Timeline Stepper */}
-            <div className="liquid-glass p-3">
+            <div id="incident-timeline" className="liquid-glass p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] font-bold uppercase text-gray-300">Incident Timeline</span>
                 <span className="text-[9px] text-gray-400 font-mono">UTC +05:30</span>
@@ -776,7 +826,7 @@ export default function OracleCommandCenter() {
       {/* ===================================================================== */}
       <section id="risk-intelligence-workspace" className="anim grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" style={{ "--d": "0.3s" } as React.CSSProperties}>
         {/* Asset Details (4 cols) */}
-        <div className="lg:col-span-4 liquid-glass p-4 flex flex-col gap-3">
+        <div id="asset-profile-registry" className="lg:col-span-4 liquid-glass p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase text-gray-300">Asset Profile Registry</span>
             <span className="text-[9px] text-gray-400 font-mono">Layer 3 Digital Twin</span>
@@ -826,7 +876,7 @@ export default function OracleCommandCenter() {
         </div>
 
         {/* Explainable AI - "Why H01?" (.liquid-glass container, 4 cols) */}
-        <div className="lg:col-span-4 liquid-glass p-4 flex flex-col justify-between">
+        <div id="explainable-ai-section" className="lg:col-span-4 liquid-glass p-4 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-bold uppercase text-gray-300">Explainable AI — "Why H01?"</span>
@@ -936,6 +986,8 @@ export default function OracleCommandCenter() {
           </div>
         </div>
       </section>
+        </main>
+      </div>
 
       {/* ===================================================================== */}
       {/* 5. EMERGENCY DISPATCH DIRECTIVE MODAL                                 */}

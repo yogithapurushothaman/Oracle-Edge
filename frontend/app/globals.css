@@ -41,21 +41,20 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg);
+  background-color: transparent;
   color: var(--text);
   overflow-x: hidden;
 }
 
 /* =========================================================
-   LIQUID-GLASS ARCHITECTURE (High Clarity & Contrast)
+   LIQUID-GLASS ARCHITECTURE (Translucent Frosted Glass)
    ========================================================= */
 .liquid-glass {
-  background: rgba(12, 26, 47, 0.72);
-  background-blend-mode: luminosity;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 58, 95, 0.6);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.65);
+  background: rgba(12, 26, 47, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 12px 32px rgba(0, 0, 0, 0.5);
   position: relative;
   overflow: hidden;
   border-radius: 1rem;
