@@ -345,7 +345,7 @@ export default function CommandCenterMap({
       {/* Top Header Overlay: Title, 3D/2D Toggles & Layer Filters */}
       <div className="absolute top-3 left-3 right-3 z-[1000] flex flex-wrap items-center justify-between pointer-events-none gap-2">
         {/* Title */}
-        <div className="bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] flex items-center gap-2 pointer-events-auto shadow-xl">
+        <div className="liquid-glass px-3 py-1.5 rounded-lg border border-white/20 flex items-center gap-2 pointer-events-auto shadow-xl">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
           <span className="text-xs font-bold text-white tracking-wide">
             City Digital Twin - Live View
@@ -355,15 +355,15 @@ export default function CommandCenterMap({
         {/* View Toggles & Layer Filter Chips */}
         <div className="flex items-center gap-2 pointer-events-auto">
           {/* 3D / 2D View Switcher */}
-          <div className="bg-[#0B132B]/95 backdrop-blur-md p-1 rounded-lg border border-[#1E3A5F] flex items-center gap-1 shadow-xl">
+          <div className="liquid-glass p-1 rounded-lg border border-white/20 flex items-center gap-1 shadow-xl">
             {(["3D", "2D"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
                 className={`px-2 py-0.5 text-[11px] font-bold rounded transition-all cursor-pointer ${
                   viewMode === mode
-                    ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/40"
-                    : "text-slate-400 hover:text-white"
+                    ? "bg-white text-black shadow-sm"
+                    : "text-gray-300 hover:text-white"
                 }`}
               >
                 {mode}
@@ -372,13 +372,13 @@ export default function CommandCenterMap({
           </div>
 
           {/* Layer Filter Buttons */}
-          <div className="bg-[#0B132B]/95 backdrop-blur-md p-1 rounded-lg border border-[#1E3A5F] flex items-center gap-1 shadow-xl">
+          <div className="liquid-glass p-1 rounded-lg border border-white/20 flex items-center gap-1 shadow-xl">
             <button
               onClick={() => toggleLayer("floodRisk")}
               className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
                 activeLayers.floodRisk
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-white/20 text-white border border-white/40"
+                  : "text-gray-400 hover:text-white"
               }`}
             >
               Flood Risk
@@ -387,8 +387,8 @@ export default function CommandCenterMap({
               onClick={() => toggleLayer("infrastructure")}
               className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
                 activeLayers.infrastructure
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-white/20 text-white border border-white/40"
+                  : "text-gray-400 hover:text-white"
               }`}
             >
               Infrastructure
@@ -397,8 +397,8 @@ export default function CommandCenterMap({
               onClick={() => toggleLayer("sensors")}
               className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
                 activeLayers.sensors
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-white/20 text-white border border-white/40"
+                  : "text-gray-400 hover:text-white"
               }`}
             >
               Sensors
@@ -407,8 +407,8 @@ export default function CommandCenterMap({
               onClick={() => toggleLayer("satellite")}
               className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
                 activeLayers.satellite
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                  : "text-slate-500 hover:text-slate-300"
+                  ? "bg-white/20 text-white border border-white/40"
+                  : "text-gray-400 hover:text-white"
               }`}
             >
               Satellite
@@ -418,8 +418,8 @@ export default function CommandCenterMap({
       </div>
 
       {/* Bottom-Left Map Legend */}
-      <div className="absolute bottom-3 left-3 bg-[#0B132B]/95 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#1E3A5F] z-[1000] flex items-center gap-3 text-[10px] font-medium text-slate-300 shadow-xl pointer-events-auto">
-        <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">
+      <div className="absolute bottom-3 left-3 liquid-glass px-3 py-1.5 rounded-lg border border-white/20 z-[1000] flex items-center gap-3 text-[10px] font-medium text-gray-300 shadow-xl pointer-events-auto">
+        <span className="text-gray-400 font-bold uppercase text-[9px] tracking-wider">
           Risk Scale:
         </span>
         <span className="flex items-center gap-1">
