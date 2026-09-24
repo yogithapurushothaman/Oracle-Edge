@@ -4,7 +4,7 @@
 
 :root {
   --u: min(calc(100vw / 1280), calc(100dvh / 800));
-  --bg: #000000;
+  --bg: transparent;
   --text: #ffffff;
   --muted: #8e8e8e;
   --nav-text: #2e2e2e;
@@ -17,7 +17,7 @@
   --font-body: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "BubbledotICG-FinePos", "Geist Pixel Circle", monospace;
-  --background: #030a14;
+  --background: transparent;
   --foreground: #f1f5f9;
 }
 
@@ -28,7 +28,7 @@
 }
 
 :root.dark, [data-theme="dark"], .dark {
-  --background: #030a14;
+  --background: transparent;
   --foreground: #f1f5f9;
 }
 
@@ -46,16 +46,22 @@
 }
 
 html, body {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #ffffff;
+  overflow-x: hidden;
   height: 100%;
   margin: 0;
   padding: 0;
-  background: #000;
-  color: var(--text);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: geometricPrecision;
-  overflow-x: hidden;
+}
+
+main, .page, #__next {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 /* ============================================================
@@ -135,11 +141,11 @@ html, body {
    LIQUID-GLASS ARCHITECTURE (Translucent Frosted Glass)
    ========================================================= */
 .liquid-glass {
-  background: rgba(12, 26, 47, 0.48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 12px 32px rgba(0, 0, 0, 0.5);
+  background: rgba(10, 20, 38, 0.45) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 8px 24px rgba(0, 0, 0, 0.4) !important;
   position: relative;
   overflow: hidden;
   border-radius: 1rem;
@@ -147,10 +153,15 @@ html, body {
 
 /* Neumorphic Recessed Wells for Sensor Tiles & Inner Cells */
 .neumorphic-well, .recessed-well {
-  background: rgba(7, 17, 32, 0.85);
+  background: rgba(5, 12, 24, 0.65) !important;
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.75);
   border-radius: 0.75rem;
+}
+
+/* Sub-cards, inner wells, and table rows */
+.sub-card, .inner-well, tr, .table-row {
+  background: rgba(5, 12, 24, 0.65) !important;
 }
 
 /* Elevated Control Buttons */

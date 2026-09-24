@@ -161,6 +161,15 @@ export default function OracleCommandCenter() {
 
   const prevCriticalRef = useRef<boolean>(false);
 
+  // Background video autoplay repair
+  useEffect(() => {
+    const vids = document.querySelectorAll("video");
+    vids.forEach((v) => {
+      v.muted = true;
+      v.play().catch(() => {});
+    });
+  }, []);
+
   // Audio setup
   useEffect(() => {
     setIsAudioMuted(getAudioMuted());
